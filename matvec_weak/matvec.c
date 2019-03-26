@@ -1,0 +1,169 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <time.h>
+
+#include "memory.h"
+
+/* An OmpSs-2@Cluster implementation for the matrix-vector multiplication
+ * kernel: y += A*x.
+ * 
+ * This version uses weak dependencies to decompose the work. It receives
+ * as input the dimensions ([M, M]) of the problem, the task size (TS) and
+ * number of rows per weak tasks (W)
+ * 
+ * We initialize the vectors with prefixed values which we can later check to
+ * ensure the correctness of the computation.
+ */
+
+void matvec(size_t M, double *A, size_t N, double *x, double *y)
+{
+	for (size_t i = 0; i < M; ++i) {
+		double res = 0.0;
+		for (size_t j = 0; j < N; ++j) {
+			res += A[i * N + j] * x[j];
+		}
+		
+		y[i] += res;
+	}
+}
+
+void init(size_t M, double *vec, double value)
+{
+	for (size_t i = 0; i < M; ++i) {
+		vec[i] = value;
+	}
+}
+
+void decompose_matvec(size_t M, double *A, size_t N, double *x, double *y,
+		size_t TS)
+{
+	for (size_t i = 0; i < M; i += TS) {
+		#pragma oss task in(A[i*N;TS*N]) in(x[0;N]) out(y[i;TS]) label(matvec)
+		matvec(TS, &A[i * N], N, x, &y[i]);
+	}
+}
+
+void decompose_init(size_t M, double *matrix, size_t N, size_t TS,
+		size_t value)
+{
+	for (size_t i = 0; i < M; i += TS) {
+		#pragma oss task out(matrix[i*N;TS*N]) label(init decomposed)
+		init(N * TS, &matrix[i * N], value);
+	}
+}
+
+void check_result(size_t M, double *A, size_t N, double *x, double *y)
+{
+	double *y_serial = lmalloc_double(M);
+	init(M, y_serial, 0);
+	matvec(M, A, N, x, y_serial);
+	
+	for (size_t i = 0; i < M; ++i) {
+		if (y_serial[i] != y[i]) {
+			printf("FAILED\n");
+			lfree_double(y_serial, M);
+			return;
+		}
+	}
+	
+	printf("SUCCESS\n");
+	lfree_double(y_serial, M);
+}
+
+void usage()
+{
+	fprintf(stderr, "usage: matvec M N TS W [CHECK]\n");
+	return;
+}
+
+int main(int argc, char *argv[])
+{
+	size_t M, N, TS, W;
+	double *A, *x, *y;
+	bool check = false;
+	
+	struct timespec tp_start, tp_end;
+	
+	if (argc != 5 && argc != 6) {
+		usage();
+		return -1;
+	}
+	
+	M = atoi(argv[1]);
+	N = atoi(argv[2]);
+	TS = atoi(argv[3]);
+	W = atoi(argv[4]);
+	
+	/* The task size and the weak task size need to divide the
+	 * number of rows*/
+	if (M % TS) {
+		fprintf(stderr, "The task-size needs to divide the number of"
+				"rows\n");
+		return -1;
+	}
+	
+	if (M % W) {
+		fprintf(stderr, "The weak task-size needs to divide the number "
+				"of rows\n");
+		return -1;
+	}
+
+	if (W % TS) {
+		fprintf(stderr, "The task-size needs to divide the weak "
+				"task-size\n");
+	}
+	
+	if (argc == 6) {
+		check = atoi(argv[5]);
+	}
+	
+	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
+	x = dmalloc_double(N, nanos6_equpart_distribution, 0, NULL);
+	y = dmalloc_double(M, nanos6_equpart_distribution, 0, NULL);
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &tp_start);
+	
+	#pragma oss task out(y[0;M]) label(initialize y)
+	init(M, y, 0);
+	
+	#pragma oss task out(x[0;N]) label(initialize x)
+	init(N, x, 1);
+	
+	for (size_t i = 0; i < M; i += W) {
+		#pragma oss task weakout(A[i*N;W*N]) label(initialize A)
+		decompose_init(W, &A[i * N], N, TS, 2);
+	}
+	
+	for (size_t i = 0; i < M; i += W) {
+		#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label(decompose matvec)
+		decompose_matvec(W, &A[i * N], N, x, &y[i], TS);
+	}
+	
+	if (check) {
+		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label(check_result)
+		check_result(M, A, N, x, y);
+	}
+	
+	#pragma oss taskwait
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &tp_end);
+	
+	double time_msec = (tp_end.tv_sec - tp_start.tv_sec) * 1e3
+		+ ((double)(tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6);
+	
+	double mflops =
+		3 * M * N 		/* 3 operations for every element of A */
+		/ (time_msec / 1000.0) 	/* time in seconds */
+		/ 1e6; 			/* convert to Mega */
+
+	printf("M:%d N:%d TS:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
+		M, N, TS, nanos6_get_cluster_nodes(), nanos6_get_num_cpus(),
+		time_msec, mflops);
+	
+	dfree_double(A, M * N);
+	dfree_double(x, N);
+	dfree_double(y, M);
+
+	return 0;
+}

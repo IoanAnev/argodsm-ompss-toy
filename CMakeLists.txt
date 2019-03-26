@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.1)
+
+project(ompss_cluster_benchmarks)
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --ompss-2")
+	
+include_directories(common)
+add_subdirectory(common)
+add_subdirectory(matvec_strong)
+add_subdirectory(matvec_weak)
+
