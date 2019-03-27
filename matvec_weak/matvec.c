@@ -10,7 +10,8 @@
  * 
  * This version uses weak dependencies to decompose the work. It receives
  * as input the dimensions ([M, M]) of the problem, the task size (TS) and
- * number of rows per weak tasks (W)
+ * number of rows per weak tasks (W). Finally, we can control the number of
+ * times that we matvec kerel will execute with the ITER argument.
  * 
  * We initialize the vectors with prefixed values which we can later check to
  * ensure the correctness of the computation.
@@ -53,11 +54,15 @@ void decompose_init(size_t M, double *matrix, size_t N, size_t TS,
 	}
 }
 
-void check_result(size_t M, double *A, size_t N, double *x, double *y)
+void check_result(size_t M, double *A, size_t N, double *x, double *y,
+		size_t ITER)
 {
 	double *y_serial = lmalloc_double(M);
 	init(M, y_serial, 0);
-	matvec(M, A, N, x, y_serial);
+	
+	for (size_t iter = 0; iter < ITER; ++iter) {
+		matvec(M, A, N, x, y_serial);
+	}
 	
 	for (size_t i = 0; i < M; ++i) {
 		if (y_serial[i] != y[i]) {
@@ -73,19 +78,19 @@ void check_result(size_t M, double *A, size_t N, double *x, double *y)
 
 void usage()
 {
-	fprintf(stderr, "usage: matvec M N TS W [CHECK]\n");
+	fprintf(stderr, "usage: matvec M N TS W ITER [CHECK]\n");
 	return;
 }
 
 int main(int argc, char *argv[])
 {
-	size_t M, N, TS, W;
+	size_t M, N, TS, W, ITER;
 	double *A, *x, *y;
 	bool check = false;
 	
 	struct timespec tp_start, tp_end;
 	
-	if (argc != 5 && argc != 6) {
+	if (argc != 6 && argc != 7) {
 		usage();
 		return -1;
 	}
@@ -94,6 +99,7 @@ int main(int argc, char *argv[])
 	N = atoi(argv[2]);
 	TS = atoi(argv[3]);
 	W = atoi(argv[4]);
+	ITER = atoi(argv[5]);
 	
 	/* The task size and the weak task size need to divide the
 	 * number of rows*/
@@ -114,8 +120,8 @@ int main(int argc, char *argv[])
 				"task-size\n");
 	}
 	
-	if (argc == 6) {
-		check = atoi(argv[5]);
+	if (argc == 7) {
+		check = atoi(argv[6]);
 	}
 	
 	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
@@ -135,14 +141,16 @@ int main(int argc, char *argv[])
 		decompose_init(W, &A[i * N], N, TS, 2);
 	}
 	
-	for (size_t i = 0; i < M; i += W) {
-		#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label(decompose matvec)
-		decompose_matvec(W, &A[i * N], N, x, &y[i], TS);
+	for (size_t iter = 0; iter < ITER; ++iter) {
+		for (size_t i = 0; i < M; i += W) {
+			#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label(decompose matvec)
+			decompose_matvec(W, &A[i * N], N, x, &y[i], TS);
+		}
 	}
 	
 	if (check) {
 		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label(check_result)
-		check_result(M, A, N, x, y);
+		check_result(M, A, N, x, y, ITER);
 	}
 	
 	#pragma oss taskwait
@@ -153,11 +161,12 @@ int main(int argc, char *argv[])
 		+ ((double)(tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6);
 	
 	double mflops =
+		ITER *			/* ITER times of kernel FLOPS */
 		3 * M * N 		/* 3 operations for every element of A */
 		/ (time_msec / 1000.0) 	/* time in seconds */
 		/ 1e6; 			/* convert to Mega */
 
-	printf("M:%d N:%d TS:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
+	printf("M:%d N:%d TS:%d ITER:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
 		M, N, TS, nanos6_get_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	

@@ -11,7 +11,8 @@
  * 
  * This version does not make use of weak dependencies. It receives as input
  * the dimensions ([M, N]) of the problem and the task size (TS). It divides
- * the problem in M / TS (strong) tasks.
+ * the problem in M / TS (strong) tasks. Finally, we can control the number of
+ * times that we matvec kerel will execute with the ITER argument.
  * 
  * We initialize the vectors with prefixed values which we can later check to
  * ensure the correctness of the computation.
@@ -37,11 +38,15 @@ void init(size_t M, double *vec, double value)
 	}
 }
 
-void check_result(size_t M, double *A, size_t N, double *x, double *y)
+void check_result(size_t M, double *A, size_t N, double *x, double *y,
+		size_t ITER)
 {
 	double *y_serial = lmalloc_double(M);
 	init(M, y_serial, 0);
-	matvec(M, A, N, x, y_serial);
+	
+	for (size_t iter = 0; iter < ITER; ++iter) {
+		matvec(M, A, N, x, y_serial);
+	}
 	
 	for (size_t i = 0; i < M; ++i) {
 		if (y_serial[i] != y[i]) {
@@ -57,18 +62,18 @@ void check_result(size_t M, double *A, size_t N, double *x, double *y)
 
 void usage()
 {
-	fprintf(stderr, "usage: matvec M N TS [CHECK]\n");
+	fprintf(stderr, "usage: matvec M N TS ITER [CHECK]\n");
 	return;
 }
 
 int main(int argc, char *argv[])
 {
-	size_t M, N, TS;
+	size_t M, N, TS, ITER;
 	double *A, *x, *y;
 	int check = false;
 	struct timespec tp_start, tp_end;
 
-	if (argc != 4 && argc != 5) {
+	if (argc != 5 && argc != 6) {
 		usage();
 		return -1;
 	}
@@ -76,6 +81,7 @@ int main(int argc, char *argv[])
 	M = atoi(argv[1]);
 	N = atoi(argv[2]);
 	TS = atoi(argv[3]);
+	ITER = atoi(argv[4]);
 	
 	/* The task size needs to divide the number
 	 * of rows */
@@ -84,8 +90,8 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
-	if (argc == 5) {
-		check = atoi(argv[4]);
+	if (argc == 6) {
+		check = atoi(argv[5]);
 	}
 	
 	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
@@ -105,14 +111,16 @@ int main(int argc, char *argv[])
 		init(N * TS, &A[i * N], 2);
 	}
 	
-	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task in(A[i*N;N*TS]) in(x[0;N]) inout(y[i;TS]) label(matvec task)
-		matvec(TS, &A[i*N], N, x, &y[i]);
+	for (size_t iter = 0; iter < ITER; ++iter) {
+		for (size_t i = 0; i < M; i += TS) {
+			#pragma oss task in(A[i*N;N*TS]) in(x[0;N]) inout(y[i;TS]) label(matvec task)
+			matvec(TS, &A[i*N], N, x, &y[i]);
+		}
 	}
 	
 	if (check) {
 		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label(check result)
-		check_result(M, A, N, x, y);
+		check_result(M, A, N, x, y, ITER);
 	}
 	
 	#pragma oss taskwait
@@ -123,7 +131,8 @@ int main(int argc, char *argv[])
 		+ ((double)(tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6);
 	
 	double mflops =
-		3 * M * N 		/* 3 operations for every element of A */
+		ITER 			/* 'ITER' times of kernel FLOPS */
+		* 3 * M * N 		/* 3 operations for every element of A */
 		/ (time_msec / 1000.0) 	/* time in seconds */
 		/ 1e6; 			/* convert to Mega */
 
