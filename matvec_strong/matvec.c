@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <time.h>
+#include <nanos6/debug.h>
 
 #include "common.h"
 

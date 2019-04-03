@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
+#include <nanos6/debug.h>
 
 #include "memory.h"
 
