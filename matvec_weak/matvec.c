@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 	x = dmalloc_double(N, nanos6_equpart_distribution, 0, NULL);
 	y = dmalloc_double(M, nanos6_equpart_distribution, 0, NULL);
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &tp_start);
+	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
 	#pragma oss task out(y[0;M]) label(initialize y)
 	init(M, y, 0);
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 	
 	#pragma oss taskwait
 
-	clock_gettime(CLOCK_MONOTONIC_RAW, &tp_end);
+	clock_gettime(CLOCK_MONOTONIC, &tp_end);
 	
 	double time_msec = (tp_end.tv_sec - tp_start.tv_sec) * 1e3
 		+ ((double)(tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6);
