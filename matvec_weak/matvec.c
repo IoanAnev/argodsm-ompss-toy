@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
 		/ 1e6; 			/* convert to Mega */
 
 	printf("M:%d N:%d TS:%d ITER:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
-		M, N, TS, nanos6_get_cluster_nodes(), nanos6_get_num_cpus(),
+		M, N, TS, ITER, nanos6_get_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	
 	dfree_double(A, M * N);
