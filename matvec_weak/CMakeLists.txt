@@ -13,4 +13,4 @@ configure_file(json/matvec_weak_single_node.json.in
 
 install(TARGETS matvec_weak DESTINATION bin)
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/json/
-	DESTINATION json)
+	DESTINATION share/json)
