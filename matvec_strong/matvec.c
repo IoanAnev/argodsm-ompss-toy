@@ -13,7 +13,7 @@
  * This version does not make use of weak dependencies. It receives as input
  * the dimensions ([M, N]) of the problem and the task size (TS). It divides
  * the problem in M / TS (strong) tasks. Finally, we can control the number of
- * times that we matvec kerel will execute with the ITER argument.
+ * times that we will execute the matvec kernel with the ITER argument.
  * 
  * We initialize the vectors with prefixed values which we can later check to
  * ensure the correctness of the computation.
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 		/ 1e6; 			/* convert to Mega */
 
 	printf("M:%d N:%d TS:%d ITER:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
-		M, N, TS, ITER, nanos6_get_cluster_nodes(), nanos6_get_num_cpus(),
+		M, N, TS, ITER, nanos6_get_num_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	
 	dfree_double(A, M * N);
