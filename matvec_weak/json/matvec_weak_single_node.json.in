@@ -6,7 +6,7 @@
 		"programming_model": "ompss"
 	},
 	"experiment": {
-		"type": "single_node",
+		"type": "strong",
 		"repetitions": 5,
 		"debug": true,
 		"hardware" : {
@@ -16,43 +16,44 @@
 		},
 		"modules_load" : ["impi/2018.1", "ompss/cluster"],
 		"modules_unload" : ["openmpi"],
+		"results_directory" : "",
 		
 		"configurations" : [
 			{
 				"args" : ["65536", "65536", "64", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			},
 			{
 				"args" : ["65536", "65536", "128", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			},
 			{
 				"args" : ["65536", "65536", "256", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			},
 			{
 				"args" : ["65536", "65536", "512", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			},
 			{
 				"args" : ["65536", "65536", "1024", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			},
 			{
 				"args" : ["65536", "65536", "2048", "4096", "10"],
 				"distributed_memory" : "40GB",
 				"local_memory" : "10GB",
-				"time_limit_minutes" : 4
+				"time_limit_minutes" : 5
 			}
 		]
 	}
