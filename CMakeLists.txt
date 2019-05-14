@@ -9,4 +9,4 @@ add_subdirectory(common)
 add_subdirectory(matvec_strong)
 add_subdirectory(matvec_weak)
 add_subdirectory(daxpy_strong)
-
+add_subdirectory(fibonacci)
