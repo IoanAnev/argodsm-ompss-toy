@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 	double time_msec = (tp_end.tv_sec - tp_start.tv_sec) * 1e3
 		+ (tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6;
 	
-	printf("N:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf\n",
+	printf("N:%zu NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf\n",
 			n, nanos6_get_num_cluster_nodes(),
 			nanos6_get_num_cpus(),
 			time_msec);

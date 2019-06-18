@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 		/ (time_msec / 1000.0) 	/* time in seconds */
 		/ 1e6;			/* convert to Mega */
 	
-	printf("N:%d TS:%d ITER:%d NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
+	printf("N:%zu TS:%zu ITER:%zu NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
 		N, TS, ITER, nanos6_get_num_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	
