@@ -35,10 +35,12 @@ N       the fibonacci number to calculate
 CHECK   an optional parameter that enables checks to make sure the computation is correct
 ```
 
-## daxpy
+## daxpy_strong
 
 Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`,
 of size `N` and `a` is a scalar.
+
+This version uses only strong dependencies for parallelisation
 
 ### Usage
 

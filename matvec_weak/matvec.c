@@ -79,7 +79,7 @@ void check_result(size_t M, double *A, size_t N, double *x, double *y,
 
 void usage()
 {
-	fprintf(stderr, "usage: matvec M N TS W ITER [CHECK]\n");
+	fprintf(stderr, "usage: matvec_weak M N TS W ITER [CHECK]\n");
 	return;
 }
 

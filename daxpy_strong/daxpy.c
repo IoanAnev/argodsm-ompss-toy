@@ -56,7 +56,7 @@ void check_result(size_t N, double *x, double alpha, double *y, size_t ITER)
 
 void usage()
 {
-	fprintf(stderr, "usage: matvec N TS ITER [CHECK]\n");
+	fprintf(stderr, "usage: daxpy_strong N TS ITER [CHECK]\n");
 	return;
 }
 
