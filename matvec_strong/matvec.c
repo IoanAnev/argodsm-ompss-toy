@@ -101,26 +101,26 @@ int main(int argc, char *argv[])
 
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 
-	#pragma oss task out(y[0;M]) label(initialize y)
+	#pragma oss task out(y[0;M]) label("initialize y")
 	init(M, y, 0);
 	
-	#pragma oss task out(x[0;N]) label(initialize x)
+	#pragma oss task out(x[0;N]) label("initialize x")
 	init(N, x, 1);
 	
 	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task out(A[i*N;N*TS]) label(initialize A)
+		#pragma oss task out(A[i*N;N*TS]) label("initialize A")
 		init(N * TS, &A[i * N], 2);
 	}
 	
 	for (size_t iter = 0; iter < ITER; ++iter) {
 		for (size_t i = 0; i < M; i += TS) {
-			#pragma oss task in(A[i*N;N*TS]) in(x[0;N]) inout(y[i;TS]) label(matvec task)
+			#pragma oss task in(A[i*N;N*TS]) in(x[0;N]) inout(y[i;TS]) label("matvec task")
 			matvec(TS, &A[i*N], N, x, &y[i]);
 		}
 	}
 	
 	if (check) {
-		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label(check result)
+		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label("check result")
 		check_result(M, A, N, x, y, ITER);
 	}
 	

@@ -41,7 +41,7 @@ void decompose_matvec(size_t M, double *A, size_t N, double *x, double *y,
 		size_t TS)
 {
 	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task in(A[i*N;TS*N]) in(x[0;N]) out(y[i;TS]) label(matvec)
+		#pragma oss task in(A[i*N;TS*N]) in(x[0;N]) out(y[i;TS]) label("matvec")
 		matvec(TS, &A[i * N], N, x, &y[i]);
 	}
 }
@@ -50,7 +50,7 @@ void decompose_init(size_t M, double *matrix, size_t N, size_t TS,
 		size_t value)
 {
 	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task out(matrix[i*N;TS*N]) label(init decomposed)
+		#pragma oss task out(matrix[i*N;TS*N]) label("init decomposed")
 		init(N * TS, &matrix[i * N], value);
 	}
 }
@@ -131,26 +131,26 @@ int main(int argc, char *argv[])
 
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
-	#pragma oss task out(y[0;M]) label(initialize y)
+	#pragma oss task out(y[0;M]) label("initialize y")
 	init(M, y, 0);
 	
-	#pragma oss task out(x[0;N]) label(initialize x)
+	#pragma oss task out(x[0;N]) label("initialize x")
 	init(N, x, 1);
 	
 	for (size_t i = 0; i < M; i += W) {
-		#pragma oss task weakout(A[i*N;W*N]) label(initialize A)
+		#pragma oss task weakout(A[i*N;W*N]) label("initialize A")
 		decompose_init(W, &A[i * N], N, TS, 2);
 	}
 	
 	for (size_t iter = 0; iter < ITER; ++iter) {
 		for (size_t i = 0; i < M; i += W) {
-			#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label(decompose matvec)
+			#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label("decompose matvec")
 			decompose_matvec(W, &A[i * N], N, x, &y[i], TS);
 		}
 	}
 	
 	if (check) {
-		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label(check_result)
+		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label("check_result")
 		check_result(M, A, N, x, y, ITER);
 	}
 	

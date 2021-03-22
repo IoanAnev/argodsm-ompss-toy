@@ -92,16 +92,16 @@ int main(int argc, char *argv[])
 	
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
-	#pragma oss task out(y[0;N]) label(initialize y)
+	#pragma oss task out(y[0;N]) label("initialize y")
 	init(N, y, 0);
 	
-	#pragma oss task out(x[0;N]) label(initialize x)
+	#pragma oss task out(x[0;N]) label("initialize x")
 	init(N, x, 42);
 	
 	for (size_t iter = 0; iter < ITER; ++iter) {
 		for (size_t i = 0; i < N; i += TS) {
 			#pragma oss task in(x[i;TS]) inout(y[i;TS]) \
-				label(daxpy task)
+				label("daxpy task")
 			daxpy(TS, x + i, alpha, y + i); 
 		}
 	}
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_MONOTONIC, &tp_end);
 	
 	if (check) {
-		#pragma oss task in(x[0;N]) inout(y[0;N]) label(check result)
+		#pragma oss task in(x[0;N]) inout(y[0;N]) label("check result")
 		check_result(N, x, alpha, y, ITER);
 	
 		#pragma oss taskwait
