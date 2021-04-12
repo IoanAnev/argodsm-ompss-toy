@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(ompss_cluster_benchmarks)
+project(ompss_cluster_c_benchmarks)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --ompss-2")
 	

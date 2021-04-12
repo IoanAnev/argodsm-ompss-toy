@@ -1,51 +1,41 @@
-# Nanos6 benchmarks
+# Toy ArgoDSM@OmpSs benchmarks
 
-Contains benchmarks that are used to evaluate the performance of the Cluster version of Nanos6.
+Contains toy benchmarks that are used to evaluate the performance of ArgoDSM@OmpSs.
 
-## Installation
+Current benchmarks in C include:
+1. [daxpy_strong](./c_bench/daxpy_strong/)
+2. [matvec_strong](./c_bench/matvec_strong/)
+3. [matvec_weak](./c_bench/matvec_weak/)
+4. [fibonacci](./c_bench/fibonacci/)
 
-The project uses `cmake` version `2.8`. Build the project using the follow steps
+Current benchmarks in C++ include:
+1. [new_bench](./cpp_bench/new_bench/)
+
+## Building
+
+Build the applications using `cmake` (version `2.8`).
 
 ```shell
-git clone <nanos6-benchmarks>
-cd  <nanos6-benchmarks_root>
 mkdir build
 cd build
 CC=mcc CXX=mcxx cmake .. -DCMAKE_INSTALL_PREFIX=<target_installation_dir> -DCMAKE_BUILD_TYPE=Release
 make install
 ```
 
-This assumes you have already installed [mercurium](https://github.com/bsc-pm/mcxx) and [nanos6](https://github.com/epeec/nanos6)
-with cluster support enabled. For more info look at the respective projects.
+This assumes you have already installed [mercurium](https://github.com/bsc-pm/mcxx) and [nanos6-cluster](https://github.com/bsc-pm/nanos6-cluster).
 
 ## Benchmarks
 
-### fibonacci
+### **daxpy-strong**
 
-Calculates the nth fibonacci number
+Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`, of size `N` and `a` is a scalar.
 
-#### Usage
+This version uses only strong dependencies for parallelisation.
 
-```sh
-./fibonacci N [CHECK]
-
-where:
-
-N       the fibonacci number to calculate
-CHECK   an optional parameter that enables checks to make sure the computation is correct
-```
-
-## daxpy_strong
-
-Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`,
-of size `N` and `a` is a scalar.
-
-This version uses only strong dependencies for parallelisation
-
-### Usage
+#### **[Usage]**
 
 ```sh
-./daxpy_strong N TS ITER [CHECK]
+mpirun $OMPIFLAGS ./daxpy_strong N TS ITER [CHECK]
 
 where:
 
@@ -55,16 +45,16 @@ ITER    number of iterations for each to execute the computation
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
 ```
 
-## matvec-strong
+### **matvec-strong**
 
-Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows
-and `N` columns. This version uses only strong OmpSs-2 dependencies to parallelize the
-problem.
+Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows and `N` columns.
 
-### Usage
+This version uses only strong dependencies for parallelisation.
+
+#### **[Usage]**
 
 ```sh
-./matvec_strong M N TS ITER [CHECK]
+mpirun $OMPIFLAGS ./matvec_strong M N TS ITER [CHECK]
 
 where:
 
@@ -75,17 +65,16 @@ ITER    number of iterations for which to execute the computations
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
 ```
 
-## matvec-weak
+### **matvec-weak**
 
-Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows
-and `N` columns. This version uses two-level tasks. The first level of tasks is using
-weak dependencies. Each of the top-level task creates a number of second-level tasks
-with strong dependencies.
+Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows and `N` columns.
 
-### Usage
+This version uses two-level tasks. The first level of tasks is using weak dependencies. Each of the top-level task creates a number of second-level tasks with strong dependencies.
+
+#### **[Usage]**
 
 ```sh
-./matvec_strong M N TS WS ITER [CHECK]
+mpirun $OMPIFLAGS ./matvec_weak M N TS WS ITER [CHECK]
 
 where:
 
@@ -95,3 +84,19 @@ TS      the number of rows of matrix A each leaf task will compute
 W       The number of rows of matrix A each top-level task will compute
 ITER    number of iterations for which to execute the computations
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
+```
+
+### **fibonacci**
+
+Calculates the n<sup>th</sup> fibonacci number.
+
+#### **[Usage]**
+
+```sh
+mpirun $OMPIFLAGS ./fibonacci N [CHECK]
+
+where:
+
+N       the fibonacci number to calculate
+CHECK   an optional parameter that enables checks to make sure the computation is correct
+```
