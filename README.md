@@ -100,3 +100,19 @@ where:
 N       the fibonacci number to calculate
 CHECK   an optional parameter that enables checks to make sure the computation is correct
 ```
+
+### **himeno**
+
+Measures the speed of major loops for solving Poisson’s equation using the Jacobi iteration method.
+
+#### **[Usage]**
+
+```sh
+(mpirun $OMPIFLAGS) ./himeno-ompss-2(-cluster) TS (PS) ([CHECK])
+
+where:
+
+TS      task granularity
+(PS)    the problem size set through CMakeLists.txt
+(CHECK) optional output to a file for verification set through CMakeLists.txt
+```

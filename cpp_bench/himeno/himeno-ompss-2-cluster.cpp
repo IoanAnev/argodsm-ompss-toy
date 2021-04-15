@@ -1,5 +1,5 @@
 /********************************************************************
-  An OmpSs-2 implementation of Himeno.
+  An OmpSs-2@Cluster implementation of Himeno.
 
   This benchmark test program is measuring a cpu performance
   of floating point operation by a Poisson equation solver.
@@ -36,7 +36,7 @@
   BND:control variable for boundaries and objects ( = 0 or 1)
   P: pressure
   ------------------
-  OmpSs-2 version written by Ioannis Anevlavis - Eta Scale AB
+  OmpSs-2@Cluster version written by Ioannis Anevlavis - Eta Scale AB
 ********************************************************************/
 
 #include <cstdio>
@@ -124,7 +124,7 @@ float jacobi(int n,
 double second();
 
 int    BSIZE;
-float  ggosa;
+float  *ggosa;
 float  omega=0.8;
 Matrix a,b,c,p,bnd,wrk1,wrk2;
 
@@ -135,6 +135,9 @@ main(int argc, char *argv[])
 	float  gosa,target;
 	double cpu0,cpu1,cpu,xmflops2,score,flop;
 	char   size[10];
+	
+	/* global scalar allocation */
+	ggosa = dmalloc<float>(1);
 
 	if(argc > 1){
 		BSIZE = atoi(argv[1]);
@@ -226,6 +229,9 @@ main(int argc, char *argv[])
 	write_to_file();
 #endif
 
+	/* global scalar deallocation */
+	dfree<float>(ggosa, 1);
+
 	/*
 	 *   Matrix free
 	 */ 
@@ -283,7 +289,7 @@ newMat(Matrix* Mat, int mnums,int mrows, int mcols, int mdeps)
 	Mat->mcols = mcols;
 	Mat->mdeps = mdeps;
 	Mat->m     = NULL;
-	Mat->m     = new float[mnums * mrows * mcols * mdeps];
+	Mat->m     = dmalloc<float>(mnums * mrows * mcols * mdeps);
 
 	return(Mat->m != NULL) ? 1:0;
 }
@@ -292,7 +298,7 @@ void
 clearMat(Matrix* Mat)
 {
 	if(Mat->m)
-		delete[] Mat->m;
+		dfree<float>(Mat->m, Mat->mnums * Mat->mcols * Mat->mrows * Mat->mdeps);
 	Mat->m     = NULL;
 	Mat->mnums = 0;
 	Mat->mcols = 0;
@@ -375,8 +381,8 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 	kmax = p->mdeps-1;
 
 	for(n=0 ; n<nn ; n++){
-		#pragma oss task out(ggosa)
-			ggosa = 0.0;
+		#pragma oss task out(*ggosa)
+			*ggosa = 0.0;
 		
 		for(i=1; i<imax; i+=BSIZE) {
 			task_chunk(beg, end, chunk, imax, i, BSIZE);
@@ -390,8 +396,8 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 						mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
 					out(						\
 						mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-					concurrent(					\
-						ggosa)					\
+					inout(						\
+						*ggosa)					\
 					private(					\
 						i, j, k, s0, ss)			\
 					firstprivate(					\
@@ -418,8 +424,7 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 
 						ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
 
-						#pragma oss atomic
-							ggosa += ss*ss;
+						*ggosa += ss*ss;
 
 						mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
 					}
@@ -439,7 +444,7 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 	} /* end n loop */
 	#pragma oss taskwait
 
-	return ggosa;
+	return *ggosa;
 }
 
 double
@@ -468,6 +473,10 @@ second()
 void
 write_to_file()
 {
+	/**
+	 * @note: might not see all data as they might
+	 *        still reside in remote data regions.
+	 */
 	int i, rv;
 	FILE *file;
 	char *outputFile = (char*)"out.himeno";

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(ompss_cluster_cpp_benchmarks)
 
-OPTION(ENABLE_OUTPUT "ENABLE OUTPUT TO FILE FOR VER." ON)
+OPTION(ENABLE_OUTPUT "ENABLE OUTPUT TO FILE FOR VER." OFF)
 
 if (ENABLE_OUTPUT)
 	add_definitions(-DENABLE_OUTPUT)
@@ -14,10 +14,14 @@ endif()
 #	M  = 2
 #	L  = 3
 #	XL = 4
-add_definitions(-DPROBLEM_SIZE=3)
+add_definitions(-DPROBLEM_SIZE=2)
 
 add_executable(himeno-ompss-2 himeno-ompss-2.cpp)
 target_link_libraries(himeno-ompss-2 numa)
 target_link_libraries(himeno-ompss-2 rt)
 
-install(TARGETS himeno-ompss-2 DESTINATION bin)
+add_executable(himeno-ompss-2-cluster himeno-ompss-2-cluster.cpp)
+target_link_libraries(himeno-ompss-2-cluster numa)
+target_link_libraries(himeno-ompss-2-cluster rt)
+
+install(TARGETS himeno-ompss-2 himeno-ompss-2-cluster DESTINATION bin)
