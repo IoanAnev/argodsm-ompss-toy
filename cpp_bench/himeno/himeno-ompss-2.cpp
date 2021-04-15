@@ -41,12 +41,47 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <string.h>
+#include <cstring>
 #include <sys/time.h>
 
 #include "memory.hpp"
 
-#define BSIZE_UNIT 512
+#define BSIZE_UNIT 64
+
+/** @brief: problem size options */
+#define XS 0
+#define S  1
+#define M  2
+#define L  3
+#define XL 4
+
+/** @brief: set matrix dimensions */
+	#define MNUMS 4
+#if   PROBLEM_SIZE == XS
+	#define MROWS 32
+	#define MCOLS 32
+	#define MDEPS 64
+#elif PROBLEM_SIZE == S
+	#define MROWS 64
+	#define MCOLS 64
+	#define MDEPS 128
+#elif PROBLEM_SIZE == M
+	#define MROWS 128
+	#define MCOLS 128
+	#define MDEPS 256
+#elif PROBLEM_SIZE == L
+	#define MROWS 256
+	#define MCOLS 256
+	#define MDEPS 512
+#elif PROBLEM_SIZE == XL
+	#define MROWS 512
+	#define MCOLS 512
+	#define MDEPS 1024
+#else
+	#define MROWS 64
+	#define MCOLS 64
+	#define MDEPS 128
+#endif
 
 struct Mat {
 	float* m;
@@ -59,19 +94,37 @@ struct Mat {
 /* prototypes */
 typedef struct Mat Matrix;
 
-int newMat(Matrix* Mat, int mnums, int mrows, int mcols, int mdeps);
+void write_to_file();
 void clearMat(Matrix* Mat);
-void set_param(int i[],char *size);
-void mat_set(Matrix* Mat,int l,float z);
+void set_param(int i[],
+		char *size);
+void mat_set(Matrix* Mat,
+		int l,
+		float z);
 void mat_set_init(Matrix* Mat);
-void task_chunk(int& beg, int& end, int& chunk,
-		const int& size, const int& index, const int& bsize);
-float jacobi(int n,Matrix* M1,Matrix* M2,Matrix* M3,
-		Matrix* M4,Matrix* M5,Matrix* M6,Matrix* M7);
+void task_chunk(int& beg,
+		int& end,
+		int& chunk,
+		const int& size,
+		const int& index,
+		const int& bsize);
+int newMat(Matrix* Mat,
+		int mnums,
+		int mrows,
+		int mcols,
+		int mdeps);
+float jacobi(int n,
+		Matrix* M1,
+		Matrix* M2,
+		Matrix* M3,
+		Matrix* M4,
+		Matrix* M5,
+		Matrix* M6,
+		Matrix* M7);
 double second();
 
 int    BSIZE;
-float* ggosa;
+float  ggosa;
 float  omega=0.8;
 Matrix a,b,c,p,bnd,wrk1,wrk2;
 
@@ -83,27 +136,15 @@ main(int argc, char *argv[])
 	double cpu0,cpu1,cpu,xmflops2,score,flop;
 	char   size[10];
 
-	/* global scalar allocation */
-	ggosa = dmalloc<float>(1);
-
-	if(argc >= 2){
-		strcpy(size,argv[1]);
-		BSIZE = (argc == 3) ? atoi(argv[2]) : BSIZE_UNIT;
+	if(argc > 1){
+		BSIZE = atoi(argv[1]);
 	} else {
-		printf("For example: \n");
-		printf(" Grid-size= XS (32x32x64)\n");
-		printf("\t    S  (64x64x128)\n");
-		printf("\t    M  (128x128x256)\n");
-		printf("\t    L  (256x256x512)\n");
-		printf("\t    XL (512x512x1024)\n\n");
-		exit(2);
+		BSIZE = BSIZE_UNIT;
 	}
 
-	set_param(msize,size);
-
-	mimax= msize[0];
-	mjmax= msize[1];
-	mkmax= msize[2];
+	mimax= MROWS;
+	mjmax= MCOLS;
+	mkmax= MDEPS;
 	imax= mimax-1;
 	jmax= mjmax-1;
 	kmax= mkmax-1;
@@ -147,32 +188,27 @@ main(int argc, char *argv[])
 	printf(" Measure the performance in %d times.\n\n",nn);
 
 	cpu0= second();
-
 	gosa= jacobi(nn,&a,&b,&c,&p,&bnd,&wrk1,&wrk2);
-
 	cpu1= second();
 	cpu= cpu1 - cpu0;
 	flop = (double)(kmax-1)*(double)(jmax-1)*(double)(imax-1)*34.0;
-
+	
 	if(cpu != 0.0)
 		xmflops2= flop/cpu*1.e-6*(nn);
-
 	printf(" MFLOPS: %f time(s): %f %e\n\n",xmflops2,cpu,gosa);
 
-	nn= (int)(target/(cpu/3.0));
-
+	/** @note: for verification, set this to a specific number */
+	nn = (int)(target/(cpu/3.0));
 	printf(" Now, start the actual measurement process.\n");
 	printf(" The loop will be excuted in %d times\n",nn);
 	printf(" This will take about one minute.\n");
 	printf(" Wait for a while\n\n");
 
 	cpu0 = second();
-
 	gosa = jacobi(nn,&a,&b,&c,&p,&bnd,&wrk1,&wrk2);
-
 	cpu1 = second();
 	cpu = cpu1 - cpu0;
-
+	
 	if(cpu != 0.0)
 		xmflops2 = (double)flop/cpu*1.0e-6*(nn);
 
@@ -186,20 +222,11 @@ main(int argc, char *argv[])
 	/*
 	 * Generate output file for verification
 	 */
-	// MPI_File fh;
-	// MPI_Status status;
-
-	// if (workrank == 0) {
-	// 	float *check = new float[mimax*mjmax*mkmax];
-	// 	for (unsigned long i = 0; i < mimax*mjmax*mkmax; i++)
-	// 		check[i] = p.m[i];
-
-	// 	MPI_File_open(MPI_COMM_SELF, "outt",MPI_MODE_CREATE | MPI_MODE_WRONLY,MPI_INFO_NULL,&fh);
-	// 	MPI_File_write(fh,check,mimax*mjmax*mkmax, MPI_FLOAT,&status);
-
-	// 	delete [] check;
-	// 	MPI_File_close(&fh);
-  	// }
+#ifdef ENABLE_OUTPUT
+	#pragma oss task in(p.m[0;mimax*mjmax*mkmax])
+		write_to_file();
+	#pragma oss taskwait
+#endif
 
 	/*
 	 *   Matrix free
@@ -211,9 +238,6 @@ main(int argc, char *argv[])
 	clearMat(&a);
 	clearMat(&b);
 	clearMat(&c);
-
-	/* global scalar deallocation */
-	dfree<float>(ggosa, 1);
 
 	return 0;
 }
@@ -245,7 +269,7 @@ set_param(int is[],char *size)
 		is[2]= 512;
 		return;
 	}
-	if(!strcmp(size,"Xl") || !strcmp(size,"xl")){
+	if(!strcmp(size,"XL") || !strcmp(size,"xl")){
 		is[0]= 512;
 		is[1]= 512;
 		is[2]= 1024;
@@ -256,12 +280,12 @@ set_param(int is[],char *size)
 int
 newMat(Matrix* Mat, int mnums,int mrows, int mcols, int mdeps)
 {
-	Mat->mnums= mnums;
-	Mat->mrows= mrows;
-	Mat->mcols= mcols;
-	Mat->mdeps= mdeps;
-	Mat->m= NULL;
-	Mat->m= dmalloc<float>(mnums * mrows * mcols * mdeps);
+	Mat->mnums = mnums;
+	Mat->mrows = mrows;
+	Mat->mcols = mcols;
+	Mat->mdeps = mdeps;
+	Mat->m     = NULL;
+	Mat->m     = new float[mnums * mrows * mcols * mdeps];
 
 	return(Mat->m != NULL) ? 1:0;
 }
@@ -270,49 +294,48 @@ void
 clearMat(Matrix* Mat)
 {
 	if(Mat->m)
-		dfree<float>(Mat->m, Mat->mnums * Mat->mrows 
-				* Mat->mcols * Mat->mdeps);
-	Mat->m= NULL;
-	Mat->mnums= 0;
-	Mat->mcols= 0;
-	Mat->mrows= 0;
-	Mat->mdeps= 0;
+		delete[] Mat->m;
+	Mat->m     = NULL;
+	Mat->mnums = 0;
+	Mat->mcols = 0;
+	Mat->mrows = 0;
+	Mat->mdeps = 0;
 }
 
 void
 mat_set(Matrix* Mat, int l, float val)
 {
-	// float (*mat)[Mat->mrows][Mat->mcols][Mat->mdeps] = 
-	// 	(float(*)[Mat->mrows][Mat->mcols][Mat->mdeps])Mat->m;
+	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
+	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	// int    beg,end,chunk;
-	// int    i,j,k;
+	int    i,j,k;
+	int    beg,end,chunk;
 
-	// int    mnums = Mat->mnums;
-	// int    mrows = Mat->mrows;
-	// int    mcols = Mat->mcols;
-	// int    mdeps = Mat->mdeps;
+	int    mnums = Mat->mnums;
+	int    mrows = Mat->mrows;
+	int    mcols = Mat->mcols;
+	int    mdeps = Mat->mdeps;
 
-	// for(i=0; i<mrows; i+=BSIZE) {
-	// 	task_chunk(beg, end, chunk, mrows, i, BSIZE);
+	for(i=0; i<mrows; i+=BSIZE) {
+		task_chunk(beg, end, chunk, mrows, i, BSIZE);
 
-	// 	#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps]) \
-	// 			private(i, j, k) firstprivate(beg, end, mcols, mdeps, l, val)
-	// 	for(i=beg; i<end; i++)
-	// 		for(j=0; j<mcols; j++)
-	// 			for(k=0; k<mdeps; k++)
-	// 				mat[l][i][j][k] = val;
-	// }
+		#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps]) \
+				private(i, j, k) firstprivate(beg, end, mcols, mdeps, l, val)
+		for(i=beg; i<end; i++)
+			for(j=0; j<mcols; j++)
+				for(k=0; k<mdeps; k++)
+					mat[l][i][j][k] = val;
+	}
 }
 
 void
 mat_set_init(Matrix* Mat)
 {
-	float (*mat)[Mat->mrows][Mat->mcols][Mat->mdeps] = 
-		(float(*)[Mat->mrows][Mat->mcols][Mat->mdeps])Mat->m;
+	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
+	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	int    beg,end,chunk;
 	int    i,j,k,l;
+	int    beg,end,chunk;
 
 	int    mnums = Mat->mnums;
 	int    mrows = Mat->mrows;
@@ -336,96 +359,89 @@ float
 jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 		Matrix* p,Matrix* bnd,Matrix* wrk1,Matrix* wrk2)
 {
-	// float (*mat_a)[a->mrows][a->mcols][a->mdeps] = 
-	// 		(float(*)[a->mrows][a->mcols][a->mdeps])a->m;
-	// float (*mat_b)[b->mrows][b->mcols][b->mdeps] = 
-	// 		(float(*)[b->mrows][b->mcols][b->mdeps])b->m;
-	// float (*mat_c)[c->mrows][c->mcols][c->mdeps] = 
-	// 		(float(*)[c->mrows][c->mcols][c->mdeps])c->m;
-	// float (*mat_p)[p->mrows][p->mcols][p->mdeps] = 
-	// 		(float(*)[p->mrows][p->mcols][p->mdeps])p->m;
-	// float (*mat_bnd)[bnd->mrows][bnd->mcols][bnd->mdeps] = 
-	// 		(float(*)[bnd->mrows][bnd->mcols][bnd->mdeps])bnd->m;
-	// float (*mat_wrk1)[wrk1->mrows][wrk1->mcols][wrk1->mdeps] = 
-	// 		(float(*)[wrk1->mrows][wrk1->mcols][wrk1->mdeps])wrk1->m;
-	// float (*mat_wrk2)[wrk2->mrows][wrk2->mcols][wrk2->mdeps] = 
-	// 		(float(*)[wrk2->mrows][wrk2->mcols][wrk2->mdeps])wrk2->m;
+	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
+	float (*mat_a)   [MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])a->m;
+	float (*mat_b)   [MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])b->m;
+	float (*mat_c)   [MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])c->m;
+	float (*mat_p)   [MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])p->m;
+	float (*mat_bnd) [MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])bnd->m;
+	float (*mat_wrk1)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk1->m;
+	float (*mat_wrk2)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk2->m;
 
-	// int    beg,end,chunk;
-	// int    i,j,k,n,imax,jmax,kmax;
-	// float  s0,ss;
+	int    i,j,k,n,imax,jmax,kmax;
+	int    beg,end,chunk;
+	float  s0,ss;
 
-	// imax= p->mrows-1;
-	// jmax= p->mcols-1;
-	// kmax= p->mdeps-1;
+	imax = p->mrows-1;
+	jmax = p->mcols-1;
+	kmax = p->mdeps-1;
 
-	// for(n=0 ; n<nn ; n++){
-	// 	#pragma oss task out(*ggosa)
-	// 		*ggosa = 0.0;
+	for(n=0 ; n<nn ; n++){
+		#pragma oss task out(ggosa)
+			ggosa = 0.0;
 		
-	// 	for(i=1; i<imax; i+=BSIZE) {
-	// 		task_chunk(beg, end, chunk, imax, i, BSIZE);
+		for(i=1; i<imax; i+=BSIZE) {
+			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-	// 		#pragma oss task in(						\
-	// 					mat_a[0;4][beg:end-1][1;jmax][1;kmax],	\
-	// 					mat_b[0;3][beg:end-1][1;jmax][1;kmax],	\
-	// 					mat_c[0;3][beg:end-1][1;jmax][1;kmax],	\
-	// 					mat_p[0][beg:end-1][1;jmax][1;kmax],	\
-	// 					mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
-	// 					mat_bnd[0][beg:end-1][1;jmax][1;kmax])	\
-	// 				out(						\
-	// 					mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-	// 				concurrent(					\
-	// 					*ggosa)					\
-	// 				private(					\
-	// 					i, j, k, s0, ss)			\
-	// 				firstprivate(					\
-	// 					beg, end, jmax, kmax, omega)
-	// 		for(i=beg; i<end; i++)
-	// 			for(j=1; j<jmax; j++)
-	// 				for(k=1; k<kmax; k++){
-	// 					s0= mat_a[0][i][j][k]*mat_p[0][i+1][j][k]
-	// 						+ mat_a[1][i][j][k] * mat_p[0][i][j+1][k]
-	// 						+ mat_a[2][i][j][k] * mat_p[0][i][j][k+1]
-	// 						+ mat_b[0][i][j][k]
-	// 						*( mat_p[0][i+1][j+1][k] - mat_p[0][i+1][j-1][k]
-	// 						 - mat_p[0][i-1][j+1][k] + mat_p[0][i-1][j-1][k] )
-	// 						+ mat_b[1][i][j][k]
-	// 						*( mat_p[0][i][j+1][k+1] - mat_p[0][i][j-1][k+1]
-	// 						 - mat_p[0][i][j+1][k-1] + mat_p[0][i][j-1][k-1] )
-	// 						+ mat_b[2][i][j][k]
-	// 						*( mat_p[0][i+1][j][k+1] - mat_p[0][i-1][j][k+1]
-	// 						 - mat_p[0][i+1][j][k-1] + mat_p[0][i-1][j][k-1] )
-	// 						+ mat_c[0][i][j][k] * mat_p[0][i-1][j][k]
-	// 						+ mat_c[1][i][j][k] * mat_p[0][i][j-1][k]
-	// 						+ mat_c[2][i][j][k] * mat_p[0][i][j][k-1]
-	// 						+ mat_wrk1[0][i][j][k];
+			#pragma oss task in(						\
+						mat_a [0;4][beg:end-1][1;jmax][1;kmax],	\
+						mat_b [0;3][beg:end-1][1;jmax][1;kmax],	\
+						mat_c [0;3][beg:end-1][1;jmax][1;kmax],	\
+						mat_p   [0][beg-1:end][0:jmax][0:kmax],	\
+						mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
+						mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
+					out(						\
+						mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+					concurrent(					\
+						ggosa)					\
+					private(					\
+						i, j, k, s0, ss)			\
+					firstprivate(					\
+						beg, end, jmax, kmax, omega)
+			for(i=beg; i<end; i++)
+				for(j=1; j<jmax; j++)
+					for(k=1; k<kmax; k++){
+						s0 =      mat_a[0][i][j][k] * mat_p[0][i+1][j][k]
+							+ mat_a[1][i][j][k] * mat_p[0][i][j+1][k]
+							+ mat_a[2][i][j][k] * mat_p[0][i][j][k+1]
+							+ mat_b[0][i][j][k]
+							*( mat_p[0][i+1][j+1][k] - mat_p[0][i+1][j-1][k]
+							 - mat_p[0][i-1][j+1][k] + mat_p[0][i-1][j-1][k] )
+							+ mat_b[1][i][j][k]
+							*( mat_p[0][i][j+1][k+1] - mat_p[0][i][j-1][k+1]
+							 - mat_p[0][i][j+1][k-1] + mat_p[0][i][j-1][k-1] )
+							+ mat_b[2][i][j][k]
+							*( mat_p[0][i+1][j][k+1] - mat_p[0][i-1][j][k+1]
+							 - mat_p[0][i+1][j][k-1] + mat_p[0][i-1][j][k-1] )
+							+ mat_c[0][i][j][k] * mat_p[0][i-1][j][k]
+							+ mat_c[1][i][j][k] * mat_p[0][i][j-1][k]
+							+ mat_c[2][i][j][k] * mat_p[0][i][j][k-1]
+							+ mat_wrk1[0][i][j][k];
 
-	// 					ss= (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
+						ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
 
-	// 					#pragma oss atomic
-	// 						*ggosa += ss*ss;
+						#pragma oss atomic
+							ggosa += ss*ss;
 
-	// 					mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
-	// 				}
-	// 	}
+						mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
+					}
+		}
 		
-	// 	for(i=1; i<imax; i+=BSIZE) {
-	// 		task_chunk(beg, end, chunk, imax, i, BSIZE);
+		for(i=1; i<imax; i+=BSIZE) {
+			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-	// 		#pragma oss task in(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-	// 				out(mat_p[0][beg:end-1][1;jmax][1;kmax])	\
-	// 				private(i, j, k) firstprivate(beg, end, jmax, kmax)
-	// 		for(i=beg; i<end; i++)
-	// 			for(j=1; j<jmax; j++)
-	// 				for(k=1; k<kmax; k++)
-	// 					mat_p[0][i][j][k] = mat_wrk2[0][i][j][k];
-	// 	}
-	// } /* end n loop */
-	// #pragma oss taskwait
+			#pragma oss task in(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+					out(mat_p   [0][beg:end-1][1;jmax][1;kmax])	\
+					private(i, j, k) firstprivate(beg, end, jmax, kmax)
+			for(i=beg; i<end; i++)
+				for(j=1; j<jmax; j++)
+					for(k=1; k<kmax; k++)
+						mat_p[0][i][j][k] = mat_wrk2[0][i][j][k];
+		}
+	} /* end n loop */
+	#pragma oss taskwait
 
-	// return(*ggosa);
-	return 0.0;
+	return ggosa;
 }
 
 double
@@ -449,6 +465,33 @@ second()
 	}
 
 	return t;
+}
+
+void
+write_to_file()
+{
+	int i, rv;
+	FILE *file;
+	char *outputFile = (char*)"out.himeno";
+
+	file = fopen(outputFile, "w");
+	if(file == NULL) {
+		printf("ERROR: Unable to open file `%s'.\n", outputFile);
+		exit(1);
+	}
+	for (i = 0; i < MROWS*MCOLS*MDEPS; i++) {
+		rv = fprintf(file,"p.m[%d]: %f\n", i, p.m[i]);
+		if(rv < 0) {
+			printf("ERROR: Unable to write to file `%s'.\n", outputFile);
+			fclose(file);
+			exit(1);
+		}
+	}
+	rv = fclose(file);
+	if(rv != 0) {
+		printf("ERROR: Unable to close file `%s'.\n", outputFile);
+		exit(1);
+	}
 }
 
 void

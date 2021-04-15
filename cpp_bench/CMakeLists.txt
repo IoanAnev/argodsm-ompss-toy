@@ -7,4 +7,4 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --ompss-2")
 include_directories(common)
 
 # available benchmarks
-add_subdirectory(new_bench)
+add_subdirectory(himeno)

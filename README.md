@@ -9,7 +9,7 @@ Current benchmarks in C include:
 4. [fibonacci](./c_bench/fibonacci/)
 
 Current benchmarks in C++ include:
-1. [new_bench](./cpp_bench/new_bench/)
+1. [himeno](./cpp_bench/himeno/)
 
 ## Building
 
