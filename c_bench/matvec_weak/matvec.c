@@ -1,68 +1,59 @@
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdlib.h>
+/**
+ * @file
+ * @brief An OmpSs-2@Cluster implementation of matrix-vector multiplication.
+ * @note The implementation uses weak and strong dependencies.
+ */
+
 #include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <stdbool.h>
 #include <nanos6/debug.h>
 
 #include "memory.h"
 
-/* An OmpSs-2@Cluster implementation for the matrix-vector multiplication
- * kernel: y += A*x.
- * 
- * This version uses weak dependencies to decompose the work. It receives
- * as input the dimensions ([M, M]) of the problem, the task size (TS) and
- * number of rows per weak tasks (W). Finally, we can control the number of
- * times that we will execute the matvec kernel with the ITER argument.
- * 
- * We initialize the vectors with prefixed values which we can later check to
- * ensure the correctness of the computation.
- */
+size_t
+node_chunk(const size_t size, const size_t task_size)
+{
+	/* calc chunk */
+	const size_t nodes = nanos6_get_num_cluster_nodes();
+	const size_t chunk = size / nodes;
+	/* make check */
+	assert(task_size <= chunk);
+	assert(chunk % task_size == 0);
 
-void matvec(size_t M, double *A, size_t N, double *x, double *y)
+	return chunk;
+}
+
+void
+mult_vector(size_t M, double *A, size_t N, double *x, double *y)
 {
 	for (size_t i = 0; i < M; ++i) {
 		double res = 0.0;
 		for (size_t j = 0; j < N; ++j) {
 			res += A[i * N + j] * x[j];
 		}
-		
 		y[i] += res;
 	}
 }
 
-void init(size_t M, double *vec, double value)
+void
+init_vector(size_t M, double *vec, double value)
 {
 	for (size_t i = 0; i < M; ++i) {
 		vec[i] = value;
 	}
 }
 
-void decompose_matvec(size_t M, double *A, size_t N, double *x, double *y,
-		size_t TS)
-{
-	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task in(A[i*N;TS*N]) in(x[0;N]) out(y[i;TS]) label("matvec")
-		matvec(TS, &A[i * N], N, x, &y[i]);
-	}
-}
-
-void decompose_init(size_t M, double *matrix, size_t N, size_t TS,
-		size_t value)
-{
-	for (size_t i = 0; i < M; i += TS) {
-		#pragma oss task out(matrix[i*N;TS*N]) label("init decomposed")
-		init(N * TS, &matrix[i * N], value);
-	}
-}
-
-void check_result(size_t M, double *A, size_t N, double *x, double *y,
-		size_t ITER)
+void
+check_result(size_t M, double *A, size_t N, double *x, double *y, size_t ITER)
 {
 	double *y_serial = lmalloc_double(M);
-	init(M, y_serial, 0);
+	init_vector(M, y_serial, 0);
 	
 	for (size_t iter = 0; iter < ITER; ++iter) {
-		matvec(M, A, N, x, y_serial);
+		mult_vector(M, A, N, x, y_serial);
 	}
 	
 	for (size_t i = 0; i < M; ++i) {
@@ -77,103 +68,162 @@ void check_result(size_t M, double *A, size_t N, double *x, double *y,
 	lfree_double(y_serial, M);
 }
 
-void usage()
+void
+usage()
 {
-	fprintf(stderr, "usage: matvec_weak M N TS W ITER [CHECK]\n");
+	fprintf(stderr, "usage: matvec_strong M N TS ITER [CHECK]\n");
 	return;
 }
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
-	size_t M, N, TS, W, ITER;
-	double *A, *x, *y;
 	bool check = false;
-	
+	double *A, *x, *y;
+	size_t M, N, TS, ITER;
 	struct timespec tp_start, tp_end;
-	
-	if (argc != 6 && argc != 7) {
+
+	if (argc != 5 && argc != 6) {
 		usage();
 		return -1;
 	}
 	
-	M = atoi(argv[1]);
-	N = atoi(argv[2]);
-	TS = atoi(argv[3]);
-	W = atoi(argv[4]);
-	ITER = atoi(argv[5]);
+	M     = atoi(argv[1]);
+	N     = atoi(argv[2]);
+	TS    = atoi(argv[3]);
+	ITER  = atoi(argv[4]);
+	check = (argc == 6) ? atoi(argv[5]) : false;
 	
-	/* The task size and the weak task size need to divide the
-	 * number of rows*/
 	if (M % TS) {
-		fprintf(stderr, "The task-size needs to divide the number of"
-				"rows\n");
+		fprintf(stderr, "The task-size needs to divide the number of rows\n");
 		return -1;
-	}
-	
-	if (M % W) {
-		fprintf(stderr, "The weak task-size needs to divide the number "
-				"of rows\n");
-		return -1;
-	}
-
-	if (W % TS) {
-		fprintf(stderr, "The task-size needs to divide the weak "
-				"task-size\n");
-	}
-	
-	if (argc == 7) {
-		check = atoi(argv[6]);
 	}
 	
 	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
-	x = dmalloc_double(N, nanos6_equpart_distribution, 0, NULL);
-	y = dmalloc_double(M, nanos6_equpart_distribution, 0, NULL);
+	x = dmalloc_double(N    , nanos6_equpart_distribution, 0, NULL);
+	y = dmalloc_double(M    , nanos6_equpart_distribution, 0, NULL);
 
+	/* Timer: initialization + computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
+
+	/* Don't offload to remote node the initialization of `y` */
+	#pragma oss task out(y[0;M]) 			\
+			node(nanos6_cluster_no_offload)	\
+			label("master: initialize y")
+	init_vector(M, y, 0);
 	
-	#pragma oss task out(y[0;M]) label("initialize y")
-	init(M, y, 0);
+	/* Don't offload to remote node the initialization of `x` */
+	#pragma oss task out(x[0;N]) 			\
+			node(nanos6_cluster_no_offload)	\
+			label("master: initialize x")
+	init_vector(N, x, 1);
 	
-	#pragma oss task out(x[0;N]) label("initialize x")
-	init(N, x, 1);
-	
-	for (size_t i = 0; i < M; i += W) {
-		#pragma oss task weakout(A[i*N;W*N]) label("initialize A")
-		decompose_init(W, &A[i * N], N, TS, 2);
-	}
-	
-	for (size_t iter = 0; iter < ITER; ++iter) {
-		for (size_t i = 0; i < M; i += W) {
-			#pragma oss task weakin(A[i*N;W*N]) weakin(x[0;N]) weakinout(y[i;W]) label("decompose matvec")
-			decompose_matvec(W, &A[i * N], N, x, &y[i], TS);
+	/* ////////////////////////////////////////////////////////
+	 * Chunk-based row initialization of `A`
+	 * ////////////////////////////////////////////////////// */
+	/* Calculate row chunk for each node */
+	size_t chunk_per_node = node_chunk(M, TS);
+
+	for (size_t i = 0; i < M; i += chunk_per_node) {
+		/* Calculate the node to which the chunk belongs  */
+		const int node_id = i / chunk_per_node;
+
+		/* Spawn a task for the whole chunk and bind to `node` */
+		#pragma oss task weakout(A[i*N;chunk_per_node*N]) 	\
+				firstprivate(i, chunk_per_node, N, TS)	\
+				node(node_id) 				\
+				label("remote: initialize chunk of rows in `A`")
+		{
+			#pragma oss task out(A[i*N;chunk_per_node*N])	\
+					node(nanos6_cluster_no_offload)	\
+					label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
+			/* Spawn sub-tasks and don't offload to remote */
+			for (size_t j = i; j < i + chunk_per_node; j += TS) {
+				#pragma oss task out(A[j*N;TS*N]) 		\
+						node(nanos6_cluster_no_offload)	\
+						label("local: initialize chunk of rows in `A`")
+				init_vector(N, &A[j*N], 2);
+			}
 		}
 	}
+	/* ////////////////////////////////////////////////////////
+	 * ////////////////////////////////////////////////////// */
 	
-	if (check) {
-		#pragma oss task in(A[0;M*N]) in(x[0;N]) in(y[0;M]) label("check_result")
-		check_result(M, A, N, x, y, ITER);
-	}
-	
-	#pragma oss taskwait
+	/* ////////////////////////////////////////////////////////
+	 * Chunk-based row multiplication y = A * x
+	 * ////////////////////////////////////////////////////// */
+	for (size_t iter = 0; iter < ITER; ++iter) {
+		for (size_t i = 0; i < M; i += chunk_per_node) {
+			/* Calculate the node to which the chunk belongs  */
+			const int node_id = i / chunk_per_node;
 
+			/* Spawn a task for the whole chunk and bind to `node` */
+			#pragma oss task weakin(A[i*N;chunk_per_node*N])	\
+					weakin(x[0;N])				\
+					weakinout(y[i;chunk_per_node]) 		\
+					firstprivate(i, chunk_per_node, N, TS)	\
+					node(node_id) 				\
+					label("remote: calculate chunk of rows in `y`")
+			{
+				#pragma oss task in(A[i*N;chunk_per_node*N])	\
+						in(x[0;N])			\
+						inout(y[i;chunk_per_node])	\
+						node(nanos6_cluster_no_offload)	\
+						label("remote: fetch all necessary data at once")
+				{
+					// fetch all data in one go
+				}
+
+				/* Spawn sub-tasks and don't offload to remote */
+				for (size_t j = i; j < i + chunk_per_node; j += TS) {
+					#pragma oss task in(A[j*N;TS*N]) 		\
+							in(x[0;N]) 			\
+							inout(y[j;TS]) 			\
+							node(nanos6_cluster_no_offload)	\
+							label("local: calculate chunk of rows in `y`")
+					mult_vector(TS, &A[j*N], N, x, &y[j]);
+				}
+			}
+		}
+	}
+	#pragma oss taskwait
+	/* ////////////////////////////////////////////////////////
+	 * ////////////////////////////////////////////////////// */
+	
+	/* Timer: initialization + computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_end);
+
+	/* Don't offload to remote node the correctness check of `y` */
+	if (check) {
+		#pragma oss task in(A[0;M*N])			\
+				in(x[0;N]) 			\
+				in(y[0;M])			\
+				node(nanos6_cluster_no_offload)	\
+				label("master: correctness check")
+		check_result(M, A, N, x, y, ITER);
+		#pragma oss taskwait
+	}
 	
 	double time_msec = (tp_end.tv_sec - tp_start.tv_sec) * 1e3
 		+ ((double)(tp_end.tv_nsec - tp_start.tv_nsec) * 1e-6);
 	
 	double mflops =
-		ITER *			/* ITER times of kernel FLOPS */
-		3 * M * N 		/* 3 operations for every element of A */
-		/ (time_msec / 1000.0) 	/* time in seconds */
-		/ 1e6; 			/* convert to Mega */
+		ITER 			/* 'ITER' times of kernel FLOPS        */
+		* 3 * M * N 		/* 3 operations for every element of A */
+		/ (time_msec / 1000.0) 	/* time in seconds                     */
+		/ 1e6; 			/* convert to Mega                     */
 
-	printf("M:%zu N:%zu TS:%zu WEAK_TS: %zu ITER:%zu NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
-		M, N, TS, W, ITER, nanos6_get_num_cluster_nodes(), nanos6_get_num_cpus(),
+	printf("M:%zu N:%zu TS:%zu ITER:%zu NR_PROCS:%d CPUS:%d TIME_MSEC:%.2lf MFLOPS:%.2lf\n",
+		M, N, TS, ITER, nanos6_get_num_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	
 	dfree_double(A, M * N);
 	dfree_double(x, N);
 	dfree_double(y, M);
-
+	
 	return 0;
 }

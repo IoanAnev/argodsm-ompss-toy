@@ -81,7 +81,6 @@ where:
 M       the rows of matrix A
 N       the columns of matrix A
 TS      the number of rows of matrix A each leaf task will compute
-W       The number of rows of matrix A each top-level task will compute
 ITER    number of iterations for which to execute the computations
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
 ```
