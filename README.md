@@ -4,9 +4,10 @@ Contains toy benchmarks that are used to evaluate the performance of ArgoDSM@Omp
 
 Current benchmarks in C include:
 1. [daxpy_strong](./c_bench/daxpy_strong/)
-2. [matvec_strong](./c_bench/matvec_strong/)
-3. [matvec_weak](./c_bench/matvec_weak/)
-4. [fibonacci](./c_bench/fibonacci/)
+2. [daxpy_weak](./c_bench/daxpy_weak/)
+3. [matvec_strong](./c_bench/matvec_strong/)
+4. [matvec_weak](./c_bench/matvec_weak/)
+5. [fibonacci](./c_bench/fibonacci/)
 
 Current benchmarks in C++ include:
 1. [himeno](./cpp_bench/himeno/)
@@ -36,6 +37,25 @@ This version uses only strong dependencies for parallelisation.
 
 ```sh
 mpirun $OMPIFLAGS ./daxpy_strong N TS ITER [CHECK]
+
+where:
+
+N       the size of the vectors x and y
+TS      the number of vector elements each leaf task will compute
+ITER    number of iterations for each to execute the computation
+CHECK   an optional parameter that enables checks to make sure the comptuation is correct
+```
+
+### **daxpy-weak**
+
+Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`, of size `N` and `a` is a scalar.
+
+This version uses two-level tasks. The first level of tasks is using weak dependencies. Each of the top-level task creates a number of second-level tasks with strong dependencies.
+
+#### **[Usage]**
+
+```sh
+mpirun $OMPIFLAGS ./daxpy_weak N TS ITER [CHECK]
 
 where:
 

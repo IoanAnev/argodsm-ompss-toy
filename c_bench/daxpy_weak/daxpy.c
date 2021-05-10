@@ -111,12 +111,20 @@ main(int argc, char *argv[])
 		const int node_id = i / chunk_per_node;
 
 		/* Spawn a task for the whole chunk and bind to `node` */
-		#pragma oss task out(y[i;chunk_per_node]) 		\
-				out(x[i;chunk_per_node])		\
+		#pragma oss task weakout(y[i;chunk_per_node]) 		\
+				weakout(x[i;chunk_per_node])		\
 				firstprivate(i, chunk_per_node, TS)	\
 				node(node_id) 				\
 				label("remote: initialize row region in `y` & `x`")
 		{
+			#pragma oss task out(y[i;chunk_per_node]) 	\
+					out(x[i;chunk_per_node])	\
+					node(nanos6_cluster_no_offload)	\
+					label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
 			/* Spawn sub-tasks and don't offload to remote */
 			for (size_t j = i; j < i + chunk_per_node; j += TS) {
 				#pragma oss task out(y[j;TS]) 			\
@@ -142,12 +150,20 @@ main(int argc, char *argv[])
 			const int node_id = i / chunk_per_node;
 
 			/* Spawn a task for the whole chunk and bind to `node` */
-			#pragma oss task in(x[i;chunk_per_node]) 		\
-					inout(y[i;chunk_per_node])		\
+			#pragma oss task weakin(x[i;chunk_per_node]) 		\
+					weakinout(y[i;chunk_per_node])		\
 					firstprivate(i, chunk_per_node, TS)	\
 					node(node_id) 				\
 					label("remote: calculate row region in `y`")
 			{
+				#pragma oss task in(x[i;chunk_per_node]) 	\
+						inout(y[i;chunk_per_node])	\
+						node(nanos6_cluster_no_offload)	\
+						label("remote: fetch all necessary data at once")
+				{
+					// fetch all data in one go
+				}
+
 				/* Spawn sub-tasks and don't offload to remote */
 				for (size_t j = i; j < i + chunk_per_node; j += TS) {
 					#pragma oss task in(x[j;TS]) 			\
