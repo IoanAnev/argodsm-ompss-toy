@@ -14,14 +14,18 @@ endif()
 #	M  = 2
 #	L  = 3
 #	XL = 4
-add_definitions(-DPROBLEM_SIZE=2)
+add_definitions(-DPROBLEM_SIZE=1)
 
 add_executable(himeno-ompss-2 himeno-ompss-2.cpp)
 target_link_libraries(himeno-ompss-2 numa)
 target_link_libraries(himeno-ompss-2 rt)
 
-add_executable(himeno-ompss-2-cluster himeno-ompss-2-cluster.cpp)
-target_link_libraries(himeno-ompss-2-cluster numa)
-target_link_libraries(himeno-ompss-2-cluster rt)
+add_executable(himeno-ompss-2-cluster-strong himeno-ompss-2-cluster-strong.cpp)
+target_link_libraries(himeno-ompss-2-cluster-strong numa)
+target_link_libraries(himeno-ompss-2-cluster-strong rt)
 
-install(TARGETS himeno-ompss-2 himeno-ompss-2-cluster DESTINATION bin)
+add_executable(himeno-ompss-2-cluster-weak himeno-ompss-2-cluster-weak.cpp)
+target_link_libraries(himeno-ompss-2-cluster-weak numa)
+target_link_libraries(himeno-ompss-2-cluster-weak rt)
+
+install(TARGETS himeno-ompss-2 himeno-ompss-2-cluster-strong himeno-ompss-2-cluster-weak DESTINATION bin)

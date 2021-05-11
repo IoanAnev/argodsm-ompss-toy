@@ -1,5 +1,6 @@
 /********************************************************************
   An OmpSs-2@Cluster implementation of Himeno.
+  NOTE: This implementation uses weak and strong dependencies.
 
   This benchmark test program is measuring a cpu performance
   of floating point operation by a Poisson equation solver.
@@ -42,6 +43,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cassert>
 #include <sys/time.h>
 
 #include "memory.hpp"
@@ -94,7 +96,6 @@ struct Mat {
 /* prototypes */
 typedef struct Mat Matrix;
 
-void write_to_file();
 void clearMat(Matrix* Mat);
 void set_param(int i[],
 		char *size);
@@ -102,6 +103,7 @@ void mat_set(Matrix* Mat,
 		int l,
 		float z);
 void mat_set_init(Matrix* Mat);
+void write_to_file(Matrix* Mat);
 void task_chunk(int& beg,
 		int& end,
 		int& chunk,
@@ -113,6 +115,8 @@ int newMat(Matrix* Mat,
 		int mrows,
 		int mcols,
 		int mdeps);
+int node_chunk(const int& size,
+	       const int& task_size);
 float jacobi(int n,
 		Matrix* M1,
 		Matrix* M2,
@@ -226,7 +230,11 @@ main(int argc, char *argv[])
 	 * Generate output file for verification
 	 */
 #ifdef ENABLE_OUTPUT
-	write_to_file();
+	#pragma oss task in(p.m[0;mimax*mjmax*mkmax])		\
+			 node(nanos6_cluster_no_offload)	\
+			 label("master: correctness check")
+	write_to_file(&p);
+	#pragma oss taskwait
 #endif
 
 	/* global scalar deallocation */
@@ -312,23 +320,38 @@ mat_set(Matrix* Mat, int l, float val)
 	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
 	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	int    i,j,k;
-	int    beg,end,chunk;
-
 	int    mnums = Mat->mnums;
 	int    mrows = Mat->mrows;
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	for(i=0; i<mrows; i+=BSIZE) {
-		task_chunk(beg, end, chunk, mrows, i, BSIZE);
+	int    chunk_per_node = node_chunk(mrows, BSIZE);
 
-		#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps]) \
-				private(i, j, k) firstprivate(beg, end, mcols, mdeps, l, val)
-		for(i=beg; i<end; i++)
-			for(j=0; j<mcols; j++)
-				for(k=0; k<mdeps; k++)
-					mat[l][i][j][k] = val;
+	for(int z=0; z<mrows; z+=chunk_per_node) {
+		const int node_id = z / chunk_per_node;
+
+		int beg_out, end_out, chunk_out;
+		task_chunk(beg_out, end_out, chunk_out, mrows, z, chunk_per_node);
+
+		#pragma oss task weakout(mat[l][beg_out:end_out-1][0;mcols][0;mdeps])		\
+				 firstprivate(l, val, beg_out, end_out, mcols, mdeps, BSIZE)	\
+				 node(node_id)							\
+				 label("remote: initialize row chunk in `mat`")
+		{
+			for(int x=beg_out; x<end_out; x+=BSIZE) {
+				int beg, end, chunk;
+				task_chunk(beg, end, chunk, end_out, x, BSIZE);
+
+				#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps])	\
+						 firstprivate(l, val, beg, end, mcols, mdeps)	\
+						 node(nanos6_cluster_no_offload)		\
+						 label("local: initialize row chunk in `mat`")
+				for(int i=beg; i<end; i++)
+					for(int j=0; j<mcols; j++)
+						for(int k=0; k<mdeps; k++)
+							mat[l][i][j][k] = val;
+			}
+		}
 	}
 }
 
@@ -338,24 +361,39 @@ mat_set_init(Matrix* Mat)
 	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
 	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	int    i,j,k,l;
-	int    beg,end,chunk;
-
 	int    mnums = Mat->mnums;
 	int    mrows = Mat->mrows;
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	for(i=0; i<mrows; i+=BSIZE) {
-		task_chunk(beg, end, chunk, mrows, i, BSIZE);
+	int    chunk_per_node = node_chunk(mrows, BSIZE);
 
-		#pragma oss task out(mat[0][beg:end-1][0;mcols][0;mdeps]) \
-				private(i, j, k) firstprivate(beg, end, mrows, mcols, mdeps)
-		for(i=beg; i<end; i++)
-			for(j=0; j<mcols; j++)
-				for(k=0; k<mdeps; k++)
-					mat[0][i][j][k] = (float)(i*i)
-						/(float)((mrows - 1)*(mrows - 1));
+	for(int z=0; z<mrows; z+=chunk_per_node) {
+		const int node_id = z / chunk_per_node;
+
+		int beg_out, end_out, chunk_out;
+		task_chunk(beg_out, end_out, chunk_out, mrows, z, chunk_per_node);
+
+		#pragma oss task weakout(mat[0][beg_out:end_out-1][0;mcols][0;mdeps])		\
+				 firstprivate(beg_out, end_out, mrows, mcols, mdeps, BSIZE)	\
+				 node(node_id)							\
+				 label("remote: initialize row chunk in `mat`")
+		{
+			for(int x=beg_out; x<end_out; x+=BSIZE) {
+				int beg, end, chunk;
+				task_chunk(beg, end, chunk, end_out, x, BSIZE);
+
+				#pragma oss task out(mat[0][beg:end-1][0;mcols][0;mdeps])	\
+						 firstprivate(beg, end, mrows, mcols, mdeps)	\
+						 node(nanos6_cluster_no_offload)		\
+						 label("local: initialize row chunk in `mat`")
+				for(int i=beg; i<end; i++)
+					for(int j=0; j<mcols; j++)
+						for(int k=0; k<mdeps; k++)
+							mat[0][i][j][k] = (float)(i*i)
+								/(float)((mrows - 1)*(mrows - 1));
+			}
+		}
 	}
 }
 
@@ -372,74 +410,104 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 	float (*mat_wrk1)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk1->m;
 	float (*mat_wrk2)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk2->m;
 
-	int    i,j,k,n,imax,jmax,kmax;
-	int    beg,end,chunk;
-	float  s0,ss;
+	int    imax = p->mrows-1;
+	int    jmax = p->mcols-1;
+	int    kmax = p->mdeps-1;
 
-	imax = p->mrows-1;
-	jmax = p->mcols-1;
-	kmax = p->mdeps-1;
+	int    chunk_per_node = node_chunk(imax, BSIZE);
 
-	for(n=0 ; n<nn ; n++){
+	for(int n=0; n<nn; n++) {
 		#pragma oss task out(*ggosa)
 			*ggosa = 0.0;
-		
-		for(i=1; i<imax; i+=BSIZE) {
-			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-			#pragma oss task in(						\
-						mat_a [0;4][beg:end-1][1;jmax][1;kmax],	\
-						mat_b [0;3][beg:end-1][1;jmax][1;kmax],	\
-						mat_c [0;3][beg:end-1][1;jmax][1;kmax],	\
-						mat_p   [0][beg-1:end][0:jmax][0:kmax],	\
-						mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
-						mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
-					out(						\
-						mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-					inout(						\
-						*ggosa)					\
-					private(					\
-						i, j, k, s0, ss)			\
-					firstprivate(					\
-						beg, end, jmax, kmax, omega)
-			for(i=beg; i<end; i++)
-				for(j=1; j<jmax; j++)
-					for(k=1; k<kmax; k++){
-						s0 =      mat_a[0][i][j][k] * mat_p[0][i+1][j][k]
-							+ mat_a[1][i][j][k] * mat_p[0][i][j+1][k]
-							+ mat_a[2][i][j][k] * mat_p[0][i][j][k+1]
-							+ mat_b[0][i][j][k]
-							*( mat_p[0][i+1][j+1][k] - mat_p[0][i+1][j-1][k]
-							 - mat_p[0][i-1][j+1][k] + mat_p[0][i-1][j-1][k] )
-							+ mat_b[1][i][j][k]
-							*( mat_p[0][i][j+1][k+1] - mat_p[0][i][j-1][k+1]
-							 - mat_p[0][i][j+1][k-1] + mat_p[0][i][j-1][k-1] )
-							+ mat_b[2][i][j][k]
-							*( mat_p[0][i+1][j][k+1] - mat_p[0][i-1][j][k+1]
-							 - mat_p[0][i+1][j][k-1] + mat_p[0][i-1][j][k-1] )
-							+ mat_c[0][i][j][k] * mat_p[0][i-1][j][k]
-							+ mat_c[1][i][j][k] * mat_p[0][i][j-1][k]
-							+ mat_c[2][i][j][k] * mat_p[0][i][j][k-1]
-							+ mat_wrk1[0][i][j][k];
+		for(int z=1; z<imax; z+=chunk_per_node) {
+			const int node_id = z / chunk_per_node;
+			
+			int beg_out, end_out, chunk_out;
+			task_chunk(beg_out, end_out, chunk_out, imax, z, chunk_per_node);
 
-						ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
+			#pragma oss task weakin( mat_a [0;4][beg_out:end_out-1][1;jmax][1;kmax],	\
+						 mat_b [0;3][beg_out:end_out-1][1;jmax][1;kmax],	\
+						 mat_c [0;3][beg_out:end_out-1][1;jmax][1;kmax],	\
+						 mat_p   [0][beg_out-1:end_out][0:jmax][0:kmax],	\
+						 mat_wrk1[0][beg_out:end_out-1][1;jmax][1;kmax],	\
+						 mat_bnd [0][beg_out:end_out-1][1;jmax][1;kmax])	\
+					 weakout(mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
+					 weakinout(*ggosa)						\
+					 firstprivate(beg_out, end_out, jmax, kmax, omega, BSIZE)	\
+					 node(node_id)							\
+					 label("remote: calculate himeno chunk")
+			{
+				for(int x=beg_out; x<end_out; x+=BSIZE) {
+					int beg, end, chunk;
+					task_chunk(beg, end, chunk, end_out, x, BSIZE);
 
-						*ggosa += ss*ss;
+					#pragma oss task in( mat_a [0;4][beg:end-1][1;jmax][1;kmax],	\
+							     mat_b [0;3][beg:end-1][1;jmax][1;kmax],	\
+							     mat_c [0;3][beg:end-1][1;jmax][1;kmax],	\
+							     mat_p   [0][beg-1:end][0:jmax][0:kmax],	\
+							     mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
+							     mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
+							 out(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+							 inout(*ggosa)					\
+							 firstprivate(beg, end, jmax, kmax, omega)	\
+							 node(nanos6_cluster_no_offload)		\
+							 label("local: calculate himeno chunk")
+					for(int i=beg; i<end; i++)
+						for(int j=1; j<jmax; j++)
+							for(int k=1; k<kmax; k++) {
+								float s0 =mat_a[0][i][j][k] * mat_p[0][i+1][j][k]
+									+ mat_a[1][i][j][k] * mat_p[0][i][j+1][k]
+									+ mat_a[2][i][j][k] * mat_p[0][i][j][k+1]
+									+ mat_b[0][i][j][k]
+									*( mat_p[0][i+1][j+1][k] - mat_p[0][i+1][j-1][k]
+									- mat_p[0][i-1][j+1][k] + mat_p[0][i-1][j-1][k] )
+									+ mat_b[1][i][j][k]
+									*( mat_p[0][i][j+1][k+1] - mat_p[0][i][j-1][k+1]
+									- mat_p[0][i][j+1][k-1] + mat_p[0][i][j-1][k-1] )
+									+ mat_b[2][i][j][k]
+									*( mat_p[0][i+1][j][k+1] - mat_p[0][i-1][j][k+1]
+									- mat_p[0][i+1][j][k-1] + mat_p[0][i-1][j][k-1] )
+									+ mat_c[0][i][j][k] * mat_p[0][i-1][j][k]
+									+ mat_c[1][i][j][k] * mat_p[0][i][j-1][k]
+									+ mat_c[2][i][j][k] * mat_p[0][i][j][k-1]
+									+ mat_wrk1[0][i][j][k];
 
-						mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
-					}
+								float ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
+								*ggosa += ss*ss;
+								mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
+							}
+				}
+			}
 		}
-		
-		for(i=1; i<imax; i+=BSIZE) {
-			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-			#pragma oss task in(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-					out(mat_p   [0][beg:end-1][1;jmax][1;kmax])	\
-					private(i, j, k) firstprivate(beg, end, jmax, kmax)
-			for(i=beg; i<end; i++)
-				for(j=1; j<jmax; j++)
-					for(k=1; k<kmax; k++)
-						mat_p[0][i][j][k] = mat_wrk2[0][i][j][k];
+		for(int z=1; z<imax; z+=chunk_per_node) {
+			const int node_id = z / chunk_per_node;
+			
+			int beg_out, end_out, chunk_out;
+			task_chunk(beg_out, end_out, chunk_out, imax, z, chunk_per_node);
+
+			#pragma oss task weakin( mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
+					 weakout(mat_p   [0][beg_out:end_out-1][1;jmax][1;kmax])	\
+					 firstprivate(beg_out, end_out, jmax, kmax, BSIZE)		\
+					 node(node_id)							\
+					 label("remote: calculate himeno chunk")
+			{
+				for(int x=beg_out; x<end_out; x+=BSIZE) {
+					int beg, end, chunk;
+					task_chunk(beg, end, chunk, end_out, x, BSIZE);
+
+					#pragma oss task in( mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+							 out(mat_p   [0][beg:end-1][1;jmax][1;kmax])	\
+							 firstprivate(beg, end, jmax, kmax)		\
+							 node(nanos6_cluster_no_offload)		\
+							 label("local: calculate himeno chunk")
+					for(int i=beg; i<end; i++)
+						for(int j=1; j<jmax; j++)
+							for(int k=1; k<kmax; k++)
+								mat_p[0][i][j][k] = mat_wrk2[0][i][j][k];
+				}
+			}
 		}
 	} /* end n loop */
 	#pragma oss taskwait
@@ -471,12 +539,8 @@ second()
 }
 
 void
-write_to_file()
+write_to_file(Matrix* Mat)
 {
-	/**
-	 * @note: might not see all data as they might
-	 *        still reside in remote data regions.
-	 */
 	int i, rv;
 	FILE *file;
 	char *outputFile = (char*)"out.himeno";
@@ -487,7 +551,7 @@ write_to_file()
 		exit(1);
 	}
 	for (i = 0; i < MROWS*MCOLS*MDEPS; i++) {
-		rv = fprintf(file,"p.m[%d]: %f\n", i, p.m[i]);
+		rv = fprintf(file,"p.m[%d]: %f\n", i, Mat->m[i]);
 		if(rv < 0) {
 			printf("ERROR: Unable to write to file `%s'.\n", outputFile);
 			fclose(file);
@@ -508,4 +572,18 @@ task_chunk(int& beg, int& end, int& chunk,
 	chunk = (size - index > bsize) ? bsize : size - index;
 	beg = index;
 	end = index + chunk;
+}
+
+int
+node_chunk(const int& size,
+		const int& task_size)
+{
+	/* calc chunk */
+	const int nodes = nanos6_get_num_cluster_nodes();
+	const int chunk = (1 + (size/nodes - 1) / nodes) * nodes;
+	/* make check */
+	assert(task_size <= chunk);
+	assert(chunk % task_size == 0);
+
+	return chunk;
 }
