@@ -13,19 +13,6 @@
 
 #include "memory.h"
 
-size_t
-node_chunk(const size_t size, const size_t task_size)
-{
-	/* calc chunk */
-	const size_t nodes = nanos6_get_num_cluster_nodes();
-	const size_t chunk = size / nodes;
-	/* make check */
-	assert(task_size <= chunk);
-	assert(chunk % task_size == 0);
-
-	return chunk;
-}
-
 void
 daxpy(size_t N, double *x, double alpha, double *y)
 {
@@ -101,33 +88,16 @@ main(int argc, char *argv[])
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
 	/* ////////////////////////////////////////////////////////
-	 * Chunk-based row initialization of `y` & `x`
+	 * Chunk-based initialization of `y` & `x`
 	 * ////////////////////////////////////////////////////// */
-	/* Calculate row region for each node */
-	size_t chunk_per_node = node_chunk(N, TS);
-
-	for (size_t i = 0; i < N; i += chunk_per_node) {
-		/* Calculate the node to which the chunk belongs  */
-		const int node_id = i / chunk_per_node;
-
-		/* Spawn a task for the whole chunk and bind to `node` */
-		#pragma oss task out(y[i;chunk_per_node]) 		\
-				out(x[i;chunk_per_node])		\
-				firstprivate(i, chunk_per_node, TS)	\
-				node(node_id) 				\
-				label("remote: initialize row region in `y` & `x`")
+	/* Spawn sub-tasks and offload to remote */
+	for (size_t i = 0; i < N; i += TS) {
+		#pragma oss task out(y[i;TS])	\
+				 out(x[i;TS])	\
+				 label("remote: initialize region in `y` & `x`")
 		{
-			/* Spawn sub-tasks and don't offload to remote */
-			for (size_t j = i; j < i + chunk_per_node; j += TS) {
-				#pragma oss task out(y[j;TS]) 			\
-						out(x[j;TS])			\
-						node(nanos6_cluster_no_offload)	\
-						label("local: initialize row region in `y` & `x`")
-				{
-					init_vector(TS, &y[j], 0);
-					init_vector(TS, &x[j], 42);
-				}
-			}
+			init_vector(TS, &y[i], 0);
+			init_vector(TS, &x[i], 42);
 		}
 	}
 	/* ////////////////////////////////////////////////////////
@@ -137,26 +107,12 @@ main(int argc, char *argv[])
 	 * Chunk-based daxpy BLAS operation
 	 * ////////////////////////////////////////////////////// */
 	for (size_t iter = 0; iter < ITER; ++iter) {
-		for (size_t i = 0; i < N; i += chunk_per_node) {
-			/* Calculate the node to which the chunk belongs  */
-			const int node_id = i / chunk_per_node;
-
-			/* Spawn a task for the whole chunk and bind to `node` */
-			#pragma oss task in(x[i;chunk_per_node]) 		\
-					inout(y[i;chunk_per_node])		\
-					firstprivate(i, chunk_per_node, TS)	\
-					node(node_id) 				\
-					label("remote: calculate row region in `y`")
-			{
-				/* Spawn sub-tasks and don't offload to remote */
-				for (size_t j = i; j < i + chunk_per_node; j += TS) {
-					#pragma oss task in(x[j;TS]) 			\
-							inout(y[j;TS])			\
-							node(nanos6_cluster_no_offload)	\
-							label("remote: calculate row region in `y`")
-					daxpy(TS, x + i, alpha, y + i);
-				}
-			}			 
+		/* Spawn sub-tasks and offload to remote */
+		for (size_t i = 0; i < N; i += TS) {
+			#pragma oss task in(x[i;TS])	\
+					 inout(y[i;TS])	\
+					 label("remote: calculate region in `y`")
+			daxpy(TS, &x[i], alpha, &y[i]);
 		}
 	}
 	#pragma oss taskwait
@@ -168,10 +124,10 @@ main(int argc, char *argv[])
 	
 	/* Don't offload to remote node the correctness check of `y` */
 	if (check) {
-		#pragma oss task in(x[0;N]) 			\
-				inout(y[0;N]) 			\
-				node(nanos6_cluster_no_offload)	\
-				label("master: correctness check")
+		#pragma oss task in(x[0;N]) 				\
+				 inout(y[0;N]) 				\
+				 node(nanos6_cluster_no_offload)	\
+				 label("master: correctness check")
 		check_result(N, x, alpha, y, ITER);
 		#pragma oss taskwait
 	}

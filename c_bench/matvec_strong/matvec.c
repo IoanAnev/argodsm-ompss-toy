@@ -13,19 +13,6 @@
 
 #include "memory.h"
 
-size_t
-node_chunk(const size_t size, const size_t task_size)
-{
-	/* calc chunk */
-	const size_t nodes = nanos6_get_num_cluster_nodes();
-	const size_t chunk = size / nodes;
-	/* make check */
-	assert(task_size <= chunk);
-	assert(chunk % task_size == 0);
-
-	return chunk;
-}
-
 void
 mult_vector(size_t M, double *A, size_t N, double *x, double *y)
 {
@@ -107,41 +94,25 @@ main(int argc, char *argv[])
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 
 	/* Don't offload to remote node the initialization of `y` */
-	#pragma oss task out(y[0;M]) 			\
-			node(nanos6_cluster_no_offload)	\
-			label("master: initialize y")
+	#pragma oss task out(y[0;M]) 				\
+			 node(nanos6_cluster_no_offload)	\
+			 label("master: initialize y")
 	init_vector(M, y, 0);
 	
 	/* Don't offload to remote node the initialization of `x` */
-	#pragma oss task out(x[0;N]) 			\
-			node(nanos6_cluster_no_offload)	\
-			label("master: initialize x")
+	#pragma oss task out(x[0;N]) 				\
+			 node(nanos6_cluster_no_offload)	\
+			 label("master: initialize x")
 	init_vector(N, x, 1);
 	
 	/* ////////////////////////////////////////////////////////
 	 * Chunk-based row initialization of `A`
 	 * ////////////////////////////////////////////////////// */
-	/* Calculate row chunk for each node */
-	size_t chunk_per_node = node_chunk(M, TS);
-
-	for (size_t i = 0; i < M; i += chunk_per_node) {
-		/* Calculate the node to which the chunk belongs  */
-		const int node_id = i / chunk_per_node;
-
-		/* Spawn a task for the whole chunk and bind to `node` */
-		#pragma oss task out(A[i*N;chunk_per_node*N]) 		\
-				firstprivate(i, chunk_per_node, N, TS)	\
-				node(node_id) 				\
-				label("remote: initialize chunk of rows in `A`")
-		{
-			/* Spawn sub-tasks and don't offload to remote */
-			for (size_t j = i; j < i + chunk_per_node; j += TS) {
-				#pragma oss task out(A[j*N;TS*N]) 		\
-						node(nanos6_cluster_no_offload)	\
-						label("local: initialize chunk of rows in `A`")
-				init_vector(N, &A[j*N], 2);
-			}
-		}
+	/* Spawn sub-tasks and offload to remote */
+	for (size_t i = 0; i < M; i += TS) {
+		#pragma oss task out(A[i*N;TS*N]) \
+				 label("remote: initialize chunk of rows in `A`")
+		init_vector(TS*N, &A[i*N], 2);
 	}
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
@@ -150,28 +121,13 @@ main(int argc, char *argv[])
 	 * Chunk-based row multiplication y = A * x
 	 * ////////////////////////////////////////////////////// */
 	for (size_t iter = 0; iter < ITER; ++iter) {
-		for (size_t i = 0; i < M; i += chunk_per_node) {
-			/* Calculate the node to which the chunk belongs  */
-			const int node_id = i / chunk_per_node;
-
-			/* Spawn a task for the whole chunk and bind to `node` */
-			#pragma oss task in(A[i*N;chunk_per_node*N])		\
-					in(x[0;N])				\
-					inout(y[i;chunk_per_node]) 		\
-					firstprivate(i, chunk_per_node, N, TS)	\
-					node(node_id) 				\
-					label("remote: calculate chunk of rows in `y`")
-			{
-				/* Spawn sub-tasks and don't offload to remote */
-				for (size_t j = i; j < i + chunk_per_node; j += TS) {
-					#pragma oss task in(A[j*N;TS*N]) 		\
-							in(x[0;N]) 			\
-							inout(y[j;TS]) 			\
-							node(nanos6_cluster_no_offload)	\
-							label("local: calculate chunk of rows in `y`")
-					mult_vector(TS, &A[j*N], N, x, &y[j]);
-				}
-			}
+		/* Spawn sub-tasks and offload to remote */
+		for (size_t i = 0; i < M; i += TS) {
+			#pragma oss task in(A[i*N;TS*N])	\
+					 in(x[0;N]) 		\
+					 inout(y[i;TS])		\
+					 label("remote: calculate chunk of rows in `y`")
+			mult_vector(TS, &A[i*N], N, x, &y[i]);
 		}
 	}
 	#pragma oss taskwait
@@ -183,11 +139,11 @@ main(int argc, char *argv[])
 
 	/* Don't offload to remote node the correctness check of `y` */
 	if (check) {
-		#pragma oss task in(A[0;M*N])			\
-				in(x[0;N]) 			\
-				in(y[0;M])			\
-				node(nanos6_cluster_no_offload)	\
-				label("master: correctness check")
+		#pragma oss task in(A[0;M*N])				\
+				 in(x[0;N]) 				\
+				 in(y[0;M])				\
+				 node(nanos6_cluster_no_offload)	\
+				 label("master: correctness check")
 		check_result(M, A, N, x, y, ITER);
 		#pragma oss taskwait
 	}
