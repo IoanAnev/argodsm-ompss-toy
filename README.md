@@ -3,14 +3,13 @@
 Contains toy benchmarks that are used to evaluate the performance of ArgoDSM@OmpSs.
 
 Current benchmarks in C include:
-1. [daxpy_strong](./c_bench/daxpy_strong/)
-2. [daxpy_weak](./c_bench/daxpy_weak/)
-3. [matvec_strong](./c_bench/matvec_strong/)
-4. [matvec_weak](./c_bench/matvec_weak/)
-5. [fibonacci](./c_bench/fibonacci/)
+1. [daxpy](./c_bench/daxpy/)
+2. [matvec](./c_bench/matvec/)
+3. [fibonacci](./c_bench/fibonacci/)
 
 Current benchmarks in C++ include:
 1. [himeno](./cpp_bench/himeno/)
+2. [matmul](./cpp_bench/matmul/)
 
 ## Building
 
@@ -27,16 +26,14 @@ This assumes you have already installed [mercurium](https://github.com/bsc-pm/mc
 
 ## Benchmarks
 
-### **daxpy-strong**
+### **daxpy**
 
 Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`, of size `N` and `a` is a scalar.
-
-This version uses only strong dependencies for parallelisation.
 
 #### **[Usage]**
 
 ```sh
-mpirun $OMPIFLAGS ./daxpy_strong N TS ITER [CHECK]
+mpirun $OMPIFLAGS ./daxpy-(strong/weak) N TS ITER [CHECK]
 
 where:
 
@@ -46,61 +43,20 @@ ITER    number of iterations for each to execute the computation
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
 ```
 
-### **daxpy-weak**
-
-Performs the computation: `y += a * x` where `x`, `y`, are two vectors of `double`, of size `N` and `a` is a scalar.
-
-This version uses two-level tasks. The first level of tasks is using weak dependencies. Each of the top-level task creates a number of second-level tasks with strong dependencies.
-
-#### **[Usage]**
-
-```sh
-mpirun $OMPIFLAGS ./daxpy_weak N TS ITER [CHECK]
-
-where:
-
-N       the size of the vectors x and y
-TS      the number of vector elements each leaf task will compute
-ITER    number of iterations for each to execute the computation
-CHECK   an optional parameter that enables checks to make sure the comptuation is correct
-```
-
-### **matvec-strong**
+### **matvec**
 
 Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows and `N` columns.
 
-This version uses only strong dependencies for parallelisation.
-
 #### **[Usage]**
 
 ```sh
-mpirun $OMPIFLAGS ./matvec_strong M N TS ITER [CHECK]
+mpirun $OMPIFLAGS ./matvec-(strong/weak) M N TS ITER [CHECK]
 
 where:
 
 M       the rows of matrix A
 N       the columns of matrix A
 TS      the number of rows of matrix A each leaf task wil compute
-ITER    number of iterations for which to execute the computations
-CHECK   an optional parameter that enables checks to make sure the comptuation is correct
-```
-
-### **matvec-weak**
-
-Calculates the matrix-vector product: `y = A * x`, where `A` is a matrix of `M` rows and `N` columns.
-
-This version uses two-level tasks. The first level of tasks is using weak dependencies. Each of the top-level task creates a number of second-level tasks with strong dependencies.
-
-#### **[Usage]**
-
-```sh
-mpirun $OMPIFLAGS ./matvec_weak M N TS WS ITER [CHECK]
-
-where:
-
-M       the rows of matrix A
-N       the columns of matrix A
-TS      the number of rows of matrix A each leaf task will compute
 ITER    number of iterations for which to execute the computations
 CHECK   an optional parameter that enables checks to make sure the comptuation is correct
 ```
@@ -127,11 +83,26 @@ Measures the speed of major loops for solving Poisson’s equation using the Jac
 #### **[Usage]**
 
 ```sh
-(mpirun $OMPIFLAGS) ./himeno-ompss-2(-cluster) TS (PS) ([CHECK])
+(mpirun $OMPIFLAGS) ./himeno-ompss-2(-cluster-(strong/weak)) TS (PS) ([CHECK])
 
 where:
 
 TS      task granularity
 (PS)    the problem size set through CMakeLists.txt
 (CHECK) optional output to a file for verification set through CMakeLists.txt
+```
+
+### **matmul**
+
+Calculates the product of two matrices.
+
+#### **[Usage]**
+
+```sh
+(mpirun $OMPIFLAGS) ./matmul-ompss-2(-cluster-(strong/weak)) -b TS [-v]
+
+where:
+
+TS      task granularity
+-v      optional parameter to enable verification
 ```
