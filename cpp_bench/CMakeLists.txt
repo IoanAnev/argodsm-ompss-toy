@@ -8,3 +8,4 @@ include_directories(common)
 
 # available benchmarks
 add_subdirectory(himeno)
+add_subdirectory(matmul)
