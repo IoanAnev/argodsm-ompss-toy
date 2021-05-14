@@ -1,7 +1,9 @@
 /**
  * @file
  * @brief An OmpSs-2@Cluster implementation of matrix multiplication.
- * @note This implementation uses strong dependencies.
+ * @copyright OmpSs-2@Cluster version written by Ioannis Anevlavis - Eta Scale AB
+ *
+ * This implementation uses strong dependencies.
  */
 
 #include <string>

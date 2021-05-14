@@ -1,6 +1,7 @@
 /**
  * @file
  * @brief An OmpSs-2 implementation of matrix multiplication.
+ * @copyright OmpSs-2 version written by Ioannis Anevlavis - Eta Scale AB
  */
 
 #include <string>
