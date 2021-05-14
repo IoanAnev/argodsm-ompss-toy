@@ -9,3 +9,4 @@ include_directories(common)
 # available benchmarks
 add_subdirectory(himeno)
 add_subdirectory(matmul)
+add_subdirectory(stream)

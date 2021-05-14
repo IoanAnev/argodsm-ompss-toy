@@ -10,6 +10,7 @@ Current benchmarks in C include:
 Current benchmarks in C++ include:
 1. [himeno](./cpp_bench/himeno/)
 2. [matmul](./cpp_bench/matmul/)
+3. [stream](./cpp_bench/stream/)
 
 ## Building
 
@@ -40,7 +41,7 @@ where:
 N       the size of the vectors x and y
 TS      the number of vector elements each leaf task will compute
 ITER    number of iterations for each to execute the computation
-CHECK   an optional parameter that enables checks to make sure the comptuation is correct
+CHECK   optional parameter that enables checks to make sure the comptuation is correct
 ```
 
 ### **matvec**
@@ -58,7 +59,7 @@ M       the rows of matrix A
 N       the columns of matrix A
 TS      the number of rows of matrix A each leaf task wil compute
 ITER    number of iterations for which to execute the computations
-CHECK   an optional parameter that enables checks to make sure the comptuation is correct
+CHECK   optional parameter that enables checks to make sure the comptuation is correct
 ```
 
 ### **fibonacci**
@@ -73,7 +74,7 @@ mpirun $OMPIFLAGS ./fibonacci N [CHECK]
 where:
 
 N       the fibonacci number to calculate
-CHECK   an optional parameter that enables checks to make sure the computation is correct
+CHECK   optional parameter that enables checks to make sure the computation is correct
 ```
 
 ### **himeno**
@@ -105,4 +106,26 @@ where:
 
 TS      task granularity
 -v      optional parameter to enable verification
+```
+
+### **stream**
+
+A set of multiple kernel operations, that is, sequential accesses over array data with simple arithmetic. \
+Kernel operations include:
+
++ `Copy`&nbsp;&nbsp;&nbsp;&nbsp;-> a(i) = b(i)
++ `Scale`&nbsp;&nbsp;-> a(i) = q*b(i)
++ `Add`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-> a(i) = b(i) + c(i)
++ `Triad`&nbsp;&nbsp;-> a(i) = b(i) = q*c(i)
+
+#### **[Usage]**
+
+```sh
+(mpirun $OMPIFLAGS) ./stream-ompss-2(-cluster-(strong/weak)) TS (STREAM_ARRAY_SIZE) ([TEAMINIT])
+
+where:
+
+TS                task granularity
+STREAM_ARRAY_SIZE the size of the working arrays set through CMakeLists.txt
+TEAMINIT          optional parameter to disable/enable team process initialization on the arrays set through CMakeLists.txt
 ```
