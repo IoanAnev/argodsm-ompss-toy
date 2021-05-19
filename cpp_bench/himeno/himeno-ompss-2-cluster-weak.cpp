@@ -43,7 +43,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cassert>
 #include <sys/time.h>
 
 #include "memory.hpp"
@@ -110,13 +109,18 @@ void task_chunk(int& beg,
 		const int& size,
 		const int& index,
 		const int& bsize);
+void node_chunk(int& beg,
+		int& end,
+		int& chunk,
+		int& node_id,
+		const int& size,
+		const int& index,
+		const int& bsize);
 int newMat(Matrix* Mat,
 		int mnums,
 		int mrows,
 		int mcols,
 		int mdeps);
-int node_chunk(const int& size,
-	       const int& task_size);
 float jacobi(int n,
 		Matrix* M1,
 		Matrix* M2,
@@ -325,25 +329,30 @@ mat_set(Matrix* Mat, int l, float val)
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	int    chunk_per_node = node_chunk(mrows, BSIZE);
+	int    generic_chunk_mrows = mrows / nanos6_get_num_cluster_nodes();
 
-	for(int z=0; z<mrows; z+=chunk_per_node) {
-		const int node_id = z / chunk_per_node;
-
-		int beg_out, end_out, chunk_out;
-		task_chunk(beg_out, end_out, chunk_out, mrows, z, chunk_per_node);
+	for(int z=0; z<mrows; z+=generic_chunk_mrows) {
+		int beg_out, end_out, chunk_out, node_id, chunk_per_node_mrows;
+		node_chunk(beg_out, end_out, chunk_out, node_id, mrows, z, generic_chunk_mrows);
 
 		#pragma oss task weakout(mat[l][beg_out:end_out-1][0;mcols][0;mdeps])		\
-				 firstprivate(l, val, beg_out, end_out, mcols, mdeps, BSIZE)	\
+				 firstprivate(beg_out, end_out, BSIZE, l, val, mcols, mdeps)	\
 				 node(node_id)							\
 				 label("remote: initialize row chunk in `mat`")
 		{
+			#pragma oss task out(mat[l][beg_out:end_out-1][0;mcols][0;mdeps])	\
+					 node(nanos6_cluster_no_offload)			\
+					 label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
 			for(int x=beg_out; x<end_out; x+=BSIZE) {
 				int beg, end, chunk;
 				task_chunk(beg, end, chunk, end_out, x, BSIZE);
 
 				#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps])	\
-						 firstprivate(l, val, beg, end, mcols, mdeps)	\
+						 firstprivate(beg, end, l, val, mcols, mdeps)	\
 						 node(nanos6_cluster_no_offload)		\
 						 label("local: initialize row chunk in `mat`")
 				for(int i=beg; i<end; i++)
@@ -366,19 +375,24 @@ mat_set_init(Matrix* Mat)
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	int    chunk_per_node = node_chunk(mrows, BSIZE);
+	int    generic_chunk_mrows = mrows / nanos6_get_num_cluster_nodes();
 
-	for(int z=0; z<mrows; z+=chunk_per_node) {
-		const int node_id = z / chunk_per_node;
-
-		int beg_out, end_out, chunk_out;
-		task_chunk(beg_out, end_out, chunk_out, mrows, z, chunk_per_node);
+	for(int z=0; z<mrows; z+=generic_chunk_mrows) {
+		int beg_out, end_out, chunk_out, node_id, chunk_per_node_mrows;
+		node_chunk(beg_out, end_out, chunk_out, node_id, mrows, z, generic_chunk_mrows);
 
 		#pragma oss task weakout(mat[0][beg_out:end_out-1][0;mcols][0;mdeps])		\
-				 firstprivate(beg_out, end_out, mrows, mcols, mdeps, BSIZE)	\
+				 firstprivate(beg_out, end_out, BSIZE, mrows, mcols, mdeps)	\
 				 node(node_id)							\
 				 label("remote: initialize row chunk in `mat`")
 		{
+			#pragma oss task out(mat[0][beg_out:end_out-1][0;mcols][0;mdeps])	\
+					 node(nanos6_cluster_no_offload)			\
+					 label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
 			for(int x=beg_out; x<end_out; x+=BSIZE) {
 				int beg, end, chunk;
 				task_chunk(beg, end, chunk, end_out, x, BSIZE);
@@ -414,17 +428,15 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 	int    jmax = p->mcols-1;
 	int    kmax = p->mdeps-1;
 
-	int    chunk_per_node = node_chunk(imax, BSIZE);
+	int    generic_chunk_imax = imax / nanos6_get_num_cluster_nodes();
 
 	for(int n=0; n<nn; n++) {
 		#pragma oss task out(*ggosa)
 			*ggosa = 0.0;
 
-		for(int z=1; z<imax; z+=chunk_per_node) {
-			const int node_id = z / chunk_per_node;
-			
-			int beg_out, end_out, chunk_out;
-			task_chunk(beg_out, end_out, chunk_out, imax, z, chunk_per_node);
+		for(int z=1; z<imax; z+=generic_chunk_imax) {
+			int beg_out, end_out, chunk_out, node_id, chunk_per_node_imax;
+			node_chunk(beg_out, end_out, chunk_out, node_id, imax, z, generic_chunk_imax);
 
 			#pragma oss task weakin( mat_a [0;4][beg_out:end_out-1][1;jmax][1;kmax],	\
 						 mat_b [0;3][beg_out:end_out-1][1;jmax][1;kmax],	\
@@ -434,10 +446,24 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 						 mat_bnd [0][beg_out:end_out-1][1;jmax][1;kmax])	\
 					 weakout(mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
 					 weakinout(*ggosa)						\
-					 firstprivate(beg_out, end_out, jmax, kmax, omega, BSIZE)	\
+					 firstprivate(beg_out, end_out, BSIZE, jmax, kmax, omega)	\
 					 node(node_id)							\
 					 label("remote: calculate himeno chunk")
 			{
+				#pragma oss task in( mat_a [0;4][beg_out:end_out-1][1;jmax][1;kmax],	\
+						     mat_b [0;3][beg_out:end_out-1][1;jmax][1;kmax],	\
+						     mat_c [0;3][beg_out:end_out-1][1;jmax][1;kmax],	\
+						     mat_p   [0][beg_out-1:end_out][0:jmax][0:kmax],	\
+						     mat_wrk1[0][beg_out:end_out-1][1;jmax][1;kmax],	\
+						     mat_bnd [0][beg_out:end_out-1][1;jmax][1;kmax])	\
+						 out(mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
+						 inout(*ggosa)						\
+						 node(nanos6_cluster_no_offload)			\
+						 label("remote: fetch all necessary data at once")
+				{
+					// fetch all data in one go
+				}
+
 				for(int x=beg_out; x<end_out; x+=BSIZE) {
 					int beg, end, chunk;
 					task_chunk(beg, end, chunk, end_out, x, BSIZE);
@@ -481,18 +507,24 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 			}
 		}
 
-		for(int z=1; z<imax; z+=chunk_per_node) {
-			const int node_id = z / chunk_per_node;
-			
-			int beg_out, end_out, chunk_out;
-			task_chunk(beg_out, end_out, chunk_out, imax, z, chunk_per_node);
+		for(int z=1; z<imax; z+=generic_chunk_imax) {
+			int beg_out, end_out, chunk_out, node_id, chunk_per_node_imax;
+			node_chunk(beg_out, end_out, chunk_out, node_id, imax, z, generic_chunk_imax);
 
 			#pragma oss task weakin( mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
 					 weakout(mat_p   [0][beg_out:end_out-1][1;jmax][1;kmax])	\
-					 firstprivate(beg_out, end_out, jmax, kmax, BSIZE)		\
+					 firstprivate(beg_out, end_out, BSIZE, jmax, kmax)		\
 					 node(node_id)							\
 					 label("remote: calculate himeno chunk")
 			{
+				#pragma oss task in( mat_wrk2[0][beg_out:end_out-1][1;jmax][1;kmax])	\
+						 out(mat_p   [0][beg_out:end_out-1][1;jmax][1;kmax])	\
+						 node(nanos6_cluster_no_offload)			\
+						 label("remote: fetch all necessary data at once")
+				{
+					// fetch all data in one go
+				}
+
 				for(int x=beg_out; x<end_out; x+=BSIZE) {
 					int beg, end, chunk;
 					task_chunk(beg, end, chunk, end_out, x, BSIZE);
@@ -574,16 +606,14 @@ task_chunk(int& beg, int& end, int& chunk,
 	end = index + chunk;
 }
 
-int
-node_chunk(const int& size,
-		const int& task_size)
+void
+node_chunk(int& beg, int& end, int& chunk, int& node_id,
+		const int& size, const int& index, const int& bsize)
 {
-	/* calc chunk */
-	const int nodes = nanos6_get_num_cluster_nodes();
-	const int chunk = (1 + (size/nodes - 1) / nodes) * nodes;
-	/* make check */
-	assert(task_size <= chunk);
-	assert(chunk % task_size == 0);
-
-	return chunk;
+	static const int nodes = nanos6_get_num_cluster_nodes();
+	
+	chunk = (size - index > bsize) ? bsize : size - index;
+	beg = index;
+	end = index + chunk;
+	node_id = ((index / chunk) < nodes) ? index / chunk : nodes-1;
 }

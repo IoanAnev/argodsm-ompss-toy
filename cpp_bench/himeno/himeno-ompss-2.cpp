@@ -306,22 +306,20 @@ mat_set(Matrix* Mat, int l, float val)
 	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
 	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	int    i,j,k;
-	int    beg,end,chunk;
-
 	int    mnums = Mat->mnums;
 	int    mrows = Mat->mrows;
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	for(i=0; i<mrows; i+=BSIZE) {
+	for(int i=0; i<mrows; i+=BSIZE) {
+		int beg, end, chunk;
 		task_chunk(beg, end, chunk, mrows, i, BSIZE);
 
-		#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps]) \
-				private(i, j, k) firstprivate(beg, end, mcols, mdeps, l, val)
-		for(i=beg; i<end; i++)
-			for(j=0; j<mcols; j++)
-				for(k=0; k<mdeps; k++)
+		#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps])	\
+				 firstprivate(beg, end, l, val, mcols, mdeps)
+		for(int i=beg; i<end; i++)
+			for(int j=0; j<mcols; j++)
+				for(int k=0; k<mdeps; k++)
 					mat[l][i][j][k] = val;
 	}
 }
@@ -332,22 +330,20 @@ mat_set_init(Matrix* Mat)
 	/** @note: set preprocessor dimensions to bypass mcxx compilation error */
 	float (*mat)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])Mat->m;
 
-	int    i,j,k,l;
-	int    beg,end,chunk;
-
 	int    mnums = Mat->mnums;
 	int    mrows = Mat->mrows;
 	int    mcols = Mat->mcols;
 	int    mdeps = Mat->mdeps;
 
-	for(i=0; i<mrows; i+=BSIZE) {
+	for(int i=0; i<mrows; i+=BSIZE) {
+		int beg, end, chunk;
 		task_chunk(beg, end, chunk, mrows, i, BSIZE);
 
-		#pragma oss task out(mat[0][beg:end-1][0;mcols][0;mdeps]) \
-				private(i, j, k) firstprivate(beg, end, mrows, mcols, mdeps)
-		for(i=beg; i<end; i++)
-			for(j=0; j<mcols; j++)
-				for(k=0; k<mdeps; k++)
+		#pragma oss task out(mat[0][beg:end-1][0;mcols][0;mdeps])	\
+				 firstprivate(beg, end, mrows, mcols, mdeps)
+		for(int i=beg; i<end; i++)
+			for(int j=0; j<mcols; j++)
+				for(int k=0; k<mdeps; k++)
 					mat[0][i][j][k] = (float)(i*i)
 						/(float)((mrows - 1)*(mrows - 1));
 	}
@@ -366,40 +362,31 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 	float (*mat_wrk1)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk1->m;
 	float (*mat_wrk2)[MROWS][MCOLS][MDEPS] = (float(*)[MROWS][MCOLS][MDEPS])wrk2->m;
 
-	int    i,j,k,n,imax,jmax,kmax;
-	int    beg,end,chunk;
-	float  s0,ss;
+	int    imax = p->mrows-1;
+	int    jmax = p->mcols-1;
+	int    kmax = p->mdeps-1;
 
-	imax = p->mrows-1;
-	jmax = p->mcols-1;
-	kmax = p->mdeps-1;
-
-	for(n=0 ; n<nn ; n++){
+	for(int n=0 ; n<nn ; n++){
 		#pragma oss task out(ggosa)
 			ggosa = 0.0;
 		
-		for(i=1; i<imax; i+=BSIZE) {
+		for(int i=1; i<imax; i+=BSIZE) {
+			int beg, end, chunk;
 			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-			#pragma oss task in(						\
-						mat_a [0;4][beg:end-1][1;jmax][1;kmax],	\
-						mat_b [0;3][beg:end-1][1;jmax][1;kmax],	\
-						mat_c [0;3][beg:end-1][1;jmax][1;kmax],	\
-						mat_p   [0][beg-1:end][0:jmax][0:kmax],	\
-						mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
-						mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
-					out(						\
-						mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-					concurrent(					\
-						ggosa)					\
-					private(					\
-						i, j, k, s0, ss)			\
-					firstprivate(					\
-						beg, end, jmax, kmax, omega)
-			for(i=beg; i<end; i++)
-				for(j=1; j<jmax; j++)
-					for(k=1; k<kmax; k++){
-						s0 =      mat_a[0][i][j][k] * mat_p[0][i+1][j][k]
+			#pragma oss task in( mat_a [0;4][beg:end-1][1;jmax][1;kmax],	\
+					     mat_b [0;3][beg:end-1][1;jmax][1;kmax],	\
+					     mat_c [0;3][beg:end-1][1;jmax][1;kmax],	\
+					     mat_p   [0][beg-1:end][0:jmax][0:kmax],	\
+					     mat_wrk1[0][beg:end-1][1;jmax][1;kmax],	\
+					     mat_bnd [0][beg:end-1][1;jmax][1;kmax])	\
+					 out(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+					 concurrent(ggosa)				\
+					 firstprivate(beg, end, jmax, kmax, omega)
+			for(int i=beg; i<end; i++)
+				for(int j=1; j<jmax; j++)
+					for(int k=1; k<kmax; k++){
+						float s0 =mat_a[0][i][j][k] * mat_p[0][i+1][j][k]
 							+ mat_a[1][i][j][k] * mat_p[0][i][j+1][k]
 							+ mat_a[2][i][j][k] * mat_p[0][i][j][k+1]
 							+ mat_b[0][i][j][k]
@@ -416,24 +403,23 @@ jacobi(int nn, Matrix* a,Matrix* b,Matrix* c,
 							+ mat_c[2][i][j][k] * mat_p[0][i][j][k-1]
 							+ mat_wrk1[0][i][j][k];
 
-						ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
-
+						float ss = (s0*mat_a[3][i][j][k] - mat_p[0][i][j][k]) * mat_bnd[0][i][j][k];
 						#pragma oss atomic
 							ggosa += ss*ss;
-
 						mat_wrk2[0][i][j][k] = mat_p[0][i][j][k] + omega*ss;
 					}
 		}
 		
-		for(i=1; i<imax; i+=BSIZE) {
+		for(int i=1; i<imax; i+=BSIZE) {
+			int beg, end, chunk;
 			task_chunk(beg, end, chunk, imax, i, BSIZE);
 
-			#pragma oss task in(mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
-					out(mat_p   [0][beg:end-1][1;jmax][1;kmax])	\
-					private(i, j, k) firstprivate(beg, end, jmax, kmax)
-			for(i=beg; i<end; i++)
-				for(j=1; j<jmax; j++)
-					for(k=1; k<kmax; k++)
+			#pragma oss task in( mat_wrk2[0][beg:end-1][1;jmax][1;kmax])	\
+					 out(mat_p   [0][beg:end-1][1;jmax][1;kmax])	\
+					 firstprivate(beg, end, jmax, kmax)
+			for(int i=beg; i<end; i++)
+				for(int j=1; j<jmax; j++)
+					for(int k=1; k<kmax; k++)
 						mat_p[0][i][j][k] = mat_wrk2[0][i][j][k];
 		}
 	} /* end n loop */

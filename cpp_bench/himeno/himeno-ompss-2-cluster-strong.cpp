@@ -327,7 +327,7 @@ mat_set(Matrix* Mat, int l, float val)
 		task_chunk(beg, end, chunk, mrows, i, BSIZE);
 
 		#pragma oss task out(mat[l][beg:end-1][0;mcols][0;mdeps]) 	\
-				 firstprivate(l, val, beg, end, mcols, mdeps)	\
+				 firstprivate(beg, end, l, val, mcols, mdeps)	\
 				 label("remote: initialize row chunk in `mat`")
 		for(int i=beg; i<end; i++)
 			for(int j=0; j<mcols; j++)
