@@ -23,6 +23,12 @@
 #endif
 #define N MATMUL_SIZE
 
+/* assume that mat_b 
+   is transposed    */
+#ifndef TRANSPOSE
+#define TRANSPOSE 1
+#endif
+
 /* global variables */
 int BSIZE;
 int NSIZE;
@@ -302,7 +308,11 @@ multiply_block(const int i,
 		for (int ii = i; ii < i+bsize; ii++) {
 			for (int jj = j; jj < j+bsize; jj++) {
 				for (int kk = k; kk < k+bsize; kk++) {
+#if TRANSPOSE == 0
 					mat_c[ii][jj] += mat_a[ii][kk] * mat_b[kk][jj];
+#else
+					mat_c[ii][jj] += mat_a[ii][kk] * mat_b[jj][kk];
+#endif
 				}
 			}
 		}
@@ -370,7 +380,11 @@ matmul_ref(double (*mat_a)[N],
         for (int i = 0; i < N; i++) {
                 for (int j = 0; j < N; j++) {
                         for (int k = 0; k < N; k++) {
+#if TRANSPOSE == 0
                         	mat_r[i][j] += mat_a[i][k] * mat_b[k][j];
+#else
+				mat_r[i][j] += mat_a[i][k] * mat_b[j][k];
+#endif
                         }
                 }
         }
