@@ -84,9 +84,9 @@ main(int argc, char *argv[])
 		return -1;
 	}
 	
-	N     = atoi(argv[1]);
-	TS    = atoi(argv[2]);
-	ITER  = atoi(argv[3]);
+	N     = atol(argv[1]);
+	TS    = atol(argv[2]);
+	ITER  = atol(argv[3]);
 	check = (argc == 5) ? atoi(argv[4]) : false;
 	
 	if (N % TS) {
