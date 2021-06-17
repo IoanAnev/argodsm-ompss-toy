@@ -259,6 +259,7 @@ init_matrices()
 				 node(node_id)					\
 				 label("remote: initialize row region in `mat_a/b/c/r`")
 		{
+#if FETCHTASK == 1
 			/* Spawn a task to bring the data chunk local to the node */
 			#pragma oss task out(mat_a[z;chunk_per_node][0;NSIZE],	\
 					     mat_b[z;chunk_per_node][0;NSIZE],	\
@@ -269,6 +270,7 @@ init_matrices()
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Parallelize for better cluster node data distribution */
 			for (int i = z; i < z + chunk_per_node; i += BSIZE) {
@@ -336,6 +338,7 @@ matmul_opt()
 				 node(node_id)					\
 				 label("remote: calculate row region in `mat_c`")
 		{
+#if FETCHTASK == 1
 			/* Spawn a task to bring the data chunk local to the node */
 			#pragma oss task in(   mat_a[z;chunk_per_node][0;NSIZE],	\
 					       mat_b[0;NSIZE         ][0;NSIZE])	\
@@ -345,6 +348,7 @@ matmul_opt()
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Parallel block-based computation */
 			for (int i = z; i < z + chunk_per_node; i += BSIZE) {

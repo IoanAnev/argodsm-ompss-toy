@@ -6,6 +6,8 @@ project(ompss_cluster_cpp_benchmarks)
 add_definitions(-DMATMUL_SIZE=2048)
 # SIMULATE THE TRANSPOSITION OF MAT_B
 add_definitions(-DTRANSPOSE=1)
+# ENABLE/DISABLE PREFETCH STRONG TASK
+add_definitions(-DFETCHTASK=0)
 
 add_executable(matmul-ompss-2 matmul-ompss-2.cpp)
 target_link_libraries(matmul-ompss-2 numa)
