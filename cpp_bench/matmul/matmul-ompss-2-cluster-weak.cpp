@@ -29,6 +29,12 @@
 #define TRANSPOSE 1
 #endif
 
+#if OUTERTASK == 0
+#if INNERTASK == 0
+#error "enable either INNERTASK or OUTERTASK or both"
+#endif
+#endif
+
 /* global variables */
 int BSIZE;
 int NSIZE;
@@ -98,6 +104,7 @@ void init_block(
 		double (*)[N],
 		double (*)[N]);
 
+#if INNERTASK == 1
 /**
  * @note: Directives are outlined,
  *        and as such, all function
@@ -112,6 +119,7 @@ in(   mat_a[i;bsize][k;bsize],	\
 inout(mat_c[i;bsize][j;bsize])	\
 node(nanos6_cluster_no_offload)	\
 label("local: calculate block in `mat_c`")
+#endif
 void multiply_block(
 		const int i,
 		const int j,
@@ -255,7 +263,7 @@ init_matrices()
 					 mat_b[z;chunk_per_node][0;NSIZE],	\
 					 mat_c[z;chunk_per_node][0;NSIZE],	\
 					 mat_r[z;chunk_per_node][0;NSIZE])	\
-				 firstprivate(z, chunk_per_node, BSIZE)		\
+				 firstprivate(z, chunk_per_node, NSIZE, BSIZE)	\
 				 node(node_id)					\
 				 label("remote: initialize row region in `mat_a/b/c/r`")
 		{
@@ -334,7 +342,7 @@ matmul_opt()
 		#pragma oss task weakin(   mat_a[z;chunk_per_node][0;NSIZE],	\
 					   mat_b[0;NSIZE         ][0;NSIZE])	\
 				 weakinout(mat_c[z;chunk_per_node][0;NSIZE])	\
-				 firstprivate(z, chunk_per_node, BSIZE)		\
+				 firstprivate(z, chunk_per_node, NSIZE, BSIZE)	\
 				 node(node_id)					\
 				 label("remote: calculate row region in `mat_c`")
 		{
@@ -351,6 +359,14 @@ matmul_opt()
 #endif
 
 			/* Parallel block-based computation */
+#if OUTERTASK == 1
+			#pragma oss task in(   mat_a[z;chunk_per_node][0;NSIZE],	\
+					       mat_b[0;NSIZE         ][0;NSIZE])	\
+					 inout(mat_c[z;chunk_per_node][0;NSIZE])	\
+					 firstprivate(z, chunk_per_node, BSIZE)		\
+					 node(nanos6_cluster_no_offload)		\
+					 label("local: calculate chunk in `mat_c`")
+#endif
 			for (int i = z; i < z + chunk_per_node; i += BSIZE) {
 				for (int j = 0; j < N; j += BSIZE) {
 					for (int k = 0; k < N; k += BSIZE) {
