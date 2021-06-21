@@ -59,10 +59,17 @@ void init_block(
  * @warning: The parameter names
  *           need to be included
  */
-#pragma oss task		\
-in(   mat_a[i;bsize][k;bsize],	\
-      mat_b[k;bsize][j;bsize])	\
+#if TRANSPOSE == 1
+#pragma oss task                \
+in(   mat_a[i;bsize][k;bsize],  \
+      mat_b[j;bsize][k;bsize])  \
 inout(mat_c[i;bsize][j;bsize])
+#else
+#pragma oss task                \
+in(   mat_a[i;bsize][k;bsize],  \
+      mat_b[k;bsize][j;bsize])  \
+inout(mat_c[i;bsize][j;bsize])
+#endif
 void multiply_block(
 		const int i,
 		const int j,

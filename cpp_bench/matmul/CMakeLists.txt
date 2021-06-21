@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 project(ompss_cluster_cpp_benchmarks)
 
 # MATRIX SIZE
-add_definitions(-DMATMUL_SIZE=2048)
+add_definitions(-DMATMUL_SIZE=512)
 # SIMULATE THE TRANSPOSITION OF MAT_B
 add_definitions(-DTRANSPOSE=1)
 # ENABLE/DISABLE PREFETCH STRONG TASK
