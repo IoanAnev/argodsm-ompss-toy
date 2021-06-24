@@ -84,9 +84,6 @@ main(int argc, char *argv[])
 	x = dmalloc_double(N, nanos6_equpart_distribution, 0, NULL);
 	y = dmalloc_double(N, nanos6_equpart_distribution, 0, NULL);
 	
-	/* Timer: initialization + computation */
-	clock_gettime(CLOCK_MONOTONIC, &tp_start);
-	
 	/* ////////////////////////////////////////////////////////
 	 * Chunk-based initialization of `y` & `x`
 	 * ////////////////////////////////////////////////////// */
@@ -100,8 +97,12 @@ main(int argc, char *argv[])
 			init_vector(TS, &x[i], 42);
 		}
 	}
+	#pragma oss taskwait
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
+	
+	/* Timer: computation */
+	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
 	/* ////////////////////////////////////////////////////////
 	 * Chunk-based daxpy BLAS operation
@@ -119,7 +120,7 @@ main(int argc, char *argv[])
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
 	
-	/* Timer: initialization + computation */
+	/* Timer: computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_end);
 	
 	/* Don't offload to remote node the correctness check of `y` */
