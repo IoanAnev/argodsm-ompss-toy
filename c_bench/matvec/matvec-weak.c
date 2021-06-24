@@ -103,9 +103,6 @@ main(int argc, char *argv[])
 	x = dmalloc_double(N    , nanos6_equpart_distribution, 0, NULL);
 	y = dmalloc_double(M    , nanos6_equpart_distribution, 0, NULL);
 
-	/* Timer: initialization + computation */
-	clock_gettime(CLOCK_MONOTONIC, &tp_start);
-
 	/* Don't offload to remote node the initialization of `y` */
 	#pragma oss task out(y[0;M]) 				\
 			 node(nanos6_cluster_no_offload)	\
@@ -150,8 +147,12 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	#pragma oss taskwait
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
+	
+	/* Timer: computation */
+	clock_gettime(CLOCK_MONOTONIC, &tp_start);
 	
 	/* ////////////////////////////////////////////////////////
 	 * Chunk-based row multiplication y = A * x
@@ -194,7 +195,7 @@ main(int argc, char *argv[])
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
 	
-	/* Timer: initialization + computation */
+	/* Timer: computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_end);
 
 	/* Don't offload to remote node the correctness check of `y` */
