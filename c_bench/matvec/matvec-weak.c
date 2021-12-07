@@ -13,6 +13,10 @@
 
 #include "memory.h"
 
+// undef: fetch tasks disabled
+//   def: fetch tasks  enabled
+// #define ENABLE_FETCH_TASKS
+
 size_t
 node_chunk(const size_t size, const size_t task_size)
 {
@@ -125,12 +129,14 @@ main(int argc, char *argv[])
 				 node(node_id) 				\
 				 label("remote: initialize chunk in `y`")
 		{
+#ifdef ENABLE_FETCH_TASKS
 			#pragma oss task out(y[i;chunk_per_node])		\
 					 node(nanos6_cluster_no_offload)	\
 					 label("remote: fetch all necessary data at once")
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Spawn sub-tasks and don't offload to remote */
 			for (size_t j = i; j < i + chunk_per_node; j += TS) {
@@ -166,12 +172,14 @@ main(int argc, char *argv[])
 				 node(node_id) 				\
 				 label("remote: initialize chunk in `x`")
 		{
+#ifdef ENABLE_FETCH_TASKS
 			#pragma oss task out(x[i;chunk_per_node])		\
 					 node(nanos6_cluster_no_offload)	\
 					 label("remote: fetch all necessary data at once")
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Spawn sub-tasks and don't offload to remote */
 			for (size_t j = i; j < i + chunk_per_node; j += TS) {
@@ -201,12 +209,14 @@ main(int argc, char *argv[])
 				 node(node_id) 				\
 				 label("remote: initialize chunk of rows in `A`")
 		{
+#ifdef ENABLE_FETCH_TASKS
 			#pragma oss task out(A[i*N;chunk_per_node*N])		\
 					 node(nanos6_cluster_no_offload)	\
 					 label("remote: fetch all necessary data at once")
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Spawn sub-tasks and don't offload to remote */
 			for (size_t j = i; j < i + chunk_per_node; j += TS) {
@@ -240,6 +250,7 @@ main(int argc, char *argv[])
 					 node(node_id) 				\
 					 label("remote: calculate chunk of rows in `y`")
 			{
+#ifdef ENABLE_FETCH_TASKS
 				#pragma oss task in(A[i*N;chunk_per_node*N])		\
 						 in(x[0;N])				\
 						 inout(y[i;chunk_per_node])		\
@@ -248,6 +259,7 @@ main(int argc, char *argv[])
 				{
 					// fetch all data in one go
 				}
+#endif
 
 				/* Spawn sub-tasks and don't offload to remote */
 				for (size_t j = i; j < i + chunk_per_node; j += TS) {
