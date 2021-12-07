@@ -99,27 +99,97 @@ main(int argc, char *argv[])
 		return -1;
 	}
 	
-	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
-	x = dmalloc_double(N    , nanos6_equpart_distribution, 0, NULL);
 	y = dmalloc_double(M    , nanos6_equpart_distribution, 0, NULL);
-
-	/* Don't offload to remote node the initialization of `y` */
-	#pragma oss task out(y[0;M]) 				\
-			 node(nanos6_cluster_no_offload)	\
-			 label("master: initialize y")
-	init_vector(M, y, 0);
+	x = dmalloc_double(N    , nanos6_equpart_distribution, 0, NULL);
+	A = dmalloc_double(M * N, nanos6_equpart_distribution, 0, NULL);
 	
+	/* Don't offload to remote node the initialization of `y` */
+	// #pragma oss task out(y[0;M]) 			\
+	// 		 node(nanos6_cluster_no_offload)	\
+	// 		 label("master: initialize y")
+	// init_vector(M, y, 0);
+
+	/* ////////////////////////////////////////////////////////
+	 * Chunk-based initialization of `y`
+	 * ////////////////////////////////////////////////////// */
+	/* Calculate chunk for each node */
+	size_t chunk_per_node = node_chunk(M, TS);
+
+	for (size_t i = 0; i < M; i += chunk_per_node) {
+		/* Calculate the node to which the chunk belongs  */
+		const int node_id = i / chunk_per_node;
+
+		/* Spawn a task for the whole chunk and bind to `node` */
+		#pragma oss task weakout(y[i;chunk_per_node]) 		\
+				 firstprivate(i, chunk_per_node, TS)	\
+				 node(node_id) 				\
+				 label("remote: initialize chunk in `y`")
+		{
+			#pragma oss task out(y[i;chunk_per_node])		\
+					 node(nanos6_cluster_no_offload)	\
+					 label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
+			/* Spawn sub-tasks and don't offload to remote */
+			for (size_t j = i; j < i + chunk_per_node; j += TS) {
+				#pragma oss task out(y[j;TS]) 			\
+						 node(nanos6_cluster_no_offload)\
+						 label("local: initialize chunk in `y`")
+				init_vector(TS, &y[j], 0);
+			}
+		}
+	}
+	/* ////////////////////////////////////////////////////////
+	 * ////////////////////////////////////////////////////// */
+
 	/* Don't offload to remote node the initialization of `x` */
-	#pragma oss task out(x[0;N]) 				\
-			 node(nanos6_cluster_no_offload)	\
-			 label("master: initialize x")
-	init_vector(N, x, 1);
+	// #pragma oss task out(x[0;N]) 			\
+	// 		 node(nanos6_cluster_no_offload)	\
+	// 		 label("master: initialize x")
+	// init_vector(N, x, 1);
+
+	/* ////////////////////////////////////////////////////////
+	 * Chunk-based initialization of `x`
+	 * ////////////////////////////////////////////////////// */
+	/* Calculate chunk for each node */
+	chunk_per_node = node_chunk(N, TS);
+
+	for (size_t i = 0; i < N; i += chunk_per_node) {
+		/* Calculate the node to which the chunk belongs  */
+		const int node_id = i / chunk_per_node;
+
+		/* Spawn a task for the whole chunk and bind to `node` */
+		#pragma oss task weakout(x[i;chunk_per_node]) 		\
+				 firstprivate(i, chunk_per_node, TS)	\
+				 node(node_id) 				\
+				 label("remote: initialize chunk in `x`")
+		{
+			#pragma oss task out(x[i;chunk_per_node])		\
+					 node(nanos6_cluster_no_offload)	\
+					 label("remote: fetch all necessary data at once")
+			{
+				// fetch all data in one go
+			}
+
+			/* Spawn sub-tasks and don't offload to remote */
+			for (size_t j = i; j < i + chunk_per_node; j += TS) {
+				#pragma oss task out(x[j;TS]) 			\
+						 node(nanos6_cluster_no_offload)\
+						 label("local: initialize chunk in `x`")
+				init_vector(TS, &x[j], 1);
+			}
+		}
+	}
+	/* ////////////////////////////////////////////////////////
+	 * ////////////////////////////////////////////////////// */
 	
 	/* ////////////////////////////////////////////////////////
 	 * Chunk-based row initialization of `A`
 	 * ////////////////////////////////////////////////////// */
 	/* Calculate row chunk for each node */
-	size_t chunk_per_node = node_chunk(M, TS);
+	chunk_per_node = node_chunk(M, TS);
 
 	for (size_t i = 0; i < M; i += chunk_per_node) {
 		/* Calculate the node to which the chunk belongs  */
@@ -147,9 +217,9 @@ main(int argc, char *argv[])
 			}
 		}
 	}
-	#pragma oss taskwait
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
+	#pragma oss taskwait
 	
 	/* Timer: computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_start);
@@ -191,9 +261,9 @@ main(int argc, char *argv[])
 			}
 		}
 	}
-	#pragma oss taskwait
 	/* ////////////////////////////////////////////////////////
 	 * ////////////////////////////////////////////////////// */
+	#pragma oss taskwait
 	
 	/* Timer: computation */
 	clock_gettime(CLOCK_MONOTONIC, &tp_end);
@@ -222,9 +292,9 @@ main(int argc, char *argv[])
 		M, N, TS, ITER, nanos6_get_num_cluster_nodes(), nanos6_get_num_cpus(),
 		time_msec, mflops);
 	
-	dfree_double(A, M * N);
-	dfree_double(x, N);
 	dfree_double(y, M);
+	dfree_double(x, N);
+	dfree_double(A, M * N);
 	
 	return 0;
 }
