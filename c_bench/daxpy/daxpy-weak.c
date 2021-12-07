@@ -13,6 +13,10 @@
 
 #include "memory.h"
 
+// undef: fetch tasks disabled
+//   def: fetch tasks  enabled
+// #define ENABLE_FETCH_TASKS
+
 size_t
 node_chunk(const size_t size, const size_t task_size)
 {
@@ -114,6 +118,7 @@ main(int argc, char *argv[])
 				 node(node_id) 				\
 				 label("remote: initialize row region in `y` & `x`")
 		{
+#ifdef ENABLE_FETCH_TASKS
 			#pragma oss task out(y[i;chunk_per_node]) 		\
 					 out(x[i;chunk_per_node])		\
 					 node(nanos6_cluster_no_offload)	\
@@ -121,6 +126,7 @@ main(int argc, char *argv[])
 			{
 				// fetch all data in one go
 			}
+#endif
 
 			/* Spawn sub-tasks and don't offload to remote */
 			for (size_t j = i; j < i + chunk_per_node; j += TS) {
@@ -157,6 +163,7 @@ main(int argc, char *argv[])
 					 node(node_id) 				\
 					 label("remote: calculate row region in `y`")
 			{
+#ifdef ENABLE_FETCH_TASKS
 				#pragma oss task in(x[i;chunk_per_node]) 		\
 						 inout(y[i;chunk_per_node])		\
 						 node(nanos6_cluster_no_offload)	\
@@ -164,6 +171,7 @@ main(int argc, char *argv[])
 				{
 					// fetch all data in one go
 				}
+#endif
 
 				/* Spawn sub-tasks and don't offload to remote */
 				for (size_t j = i; j < i + chunk_per_node; j += TS) {
